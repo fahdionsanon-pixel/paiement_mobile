@@ -1,0 +1,7 @@
+{
+  "name": "paiement-mobile",
+  "integrations": {
+    "capacitor": {}
+  },
+  "type": "angular"
+}
