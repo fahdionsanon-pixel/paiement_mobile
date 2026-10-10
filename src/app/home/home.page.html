@@ -1,20 +1,386 @@
-<ion-header [translucent]="true">
-  <ion-toolbar>
-    <ion-title>
-      Blank
-    </ion-title>
-  </ion-toolbar>
-</ion-header>
+<ion-content [fullscreen]="true" class="wave-content">
 
-<ion-content [fullscreen]="true">
-  <ion-header collapse="condense">
-    <ion-toolbar>
-      <ion-title size="large">Blank</ion-title>
-    </ion-toolbar>
-  </ion-header>
+  <!-- ===== HEADER ZONE ===== -->
+  <div class="wave-header">
 
-  <div id="container">
-    <strong>Ready to create an app?</strong>
-    <p>Start with Ionic <a target="_blank" rel="noopener noreferrer" href="https://ionicframework.com/docs/components">UI Components</a></p>
+    <!-- Top bar -->
+    <div class="wave-topbar">
+      <div class="wave-user-info">
+        <div class="wave-avatar" (click)="openProfile()">
+          {{ user.initials }}
+        </div>
+        <div class="wave-user-text">
+          <span class="wave-greeting">Bonjour 👋</span>
+          <span class="wave-username">{{ user.name }}</span>
+        </div>
+      </div>
+      <div class="wave-topbar-actions">
+        <button class="wave-icon-btn" (click)="isNotificationsModalOpen = true" id="btn-notifications">
+          <ion-icon name="notifications-outline"></ion-icon>
+          <span *ngIf="unreadNotificationCount > 0" class="wave-notif-dot">{{ unreadNotificationCount }}</span>
+        </button>
+        <button class="wave-icon-btn" (click)="logout()" id="btn-logout">
+          <ion-icon name="log-out-outline"></ion-icon>
+        </button>
+      </div>
+    </div>
+
+    <!-- Balance Block -->
+    <div class="wave-balance-block">
+      <span class="wave-balance-label">Solde disponible</span>
+      <div class="wave-balance-row">
+        <h1 class="wave-balance-amount" *ngIf="showBalance">{{ formattedBalance }}</h1>
+        <h1 class="wave-balance-hidden" *ngIf="!showBalance">••••••</h1>
+        <button class="wave-eye-btn" (click)="toggleBalance()" id="btn-toggle-balance">
+          <ion-icon [name]="showBalance ? 'eye-outline' : 'eye-off-outline'"></ion-icon>
+        </button>
+      </div>
+      <p class="wave-phone-label">{{ user.phone }}</p>
+    </div>
+
+    <!-- 4 Main Action Buttons (Wave Style) -->
+    <div class="wave-actions-row">
+      <button class="wave-action-btn" (click)="handleQuickAction('send')" id="btn-envoyer">
+        <div class="wave-action-icon">
+          <ion-icon name="paper-plane-outline"></ion-icon>
+        </div>
+        <span>Envoyer</span>
+      </button>
+
+      <button class="wave-action-btn" (click)="handleQuickAction('receive')" id="btn-recevoir">
+        <div class="wave-action-icon">
+          <ion-icon name="arrow-down-outline"></ion-icon>
+        </div>
+        <span>Recevoir</span>
+      </button>
+
+      <button class="wave-action-btn" (click)="handleQuickAction('scan')" id="btn-scanner">
+        <div class="wave-action-icon">
+          <ion-icon name="qr-code-outline"></ion-icon>
+        </div>
+        <span>Scanner</span>
+      </button>
+
+      <button class="wave-action-btn" (click)="handleQuickAction('topup')" id="btn-recharger">
+        <div class="wave-action-icon">
+          <ion-icon name="add-outline"></ion-icon>
+        </div>
+        <span>Déposer</span>
+      </button>
+    </div>
   </div>
+
+  <!-- ===== BODY ZONE ===== -->
+  <div class="wave-body">
+
+    <!-- Services rapides -->
+    <div class="wave-services-row">
+      <button class="wave-service-chip" (click)="handleQuickAction('bills')" id="btn-factures">
+        <ion-icon name="receipt-outline"></ion-icon>
+        <span>Factures</span>
+      </button>
+      <button class="wave-service-chip" (click)="handleQuickAction('airtime')" id="btn-credit">
+        <ion-icon name="phone-portrait-outline"></ion-icon>
+        <span>Crédit</span>
+      </button>
+      <button class="wave-service-chip" (click)="handleQuickAction('services')" id="btn-services">
+        <ion-icon name="grid-outline"></ion-icon>
+        <span>Services</span>
+      </button>
+    </div>
+
+    <!-- Transactions Section -->
+    <div class="wave-section">
+      <div class="wave-section-header">
+        <h3 class="wave-section-title">Transactions</h3>
+        <span class="wave-tx-count" *ngIf="transactions.length > 0">{{ transactions.length }}</span>
+      </div>
+
+      <!-- Empty State (Nouveau compte) -->
+      <div class="wave-empty-state" *ngIf="transactions.length === 0">
+        <div class="wave-empty-icon">
+          <ion-icon name="swap-horizontal-outline"></ion-icon>
+        </div>
+        <h4 class="wave-empty-title">Aucune transaction</h4>
+        <p class="wave-empty-sub">Vos transactions apparaîtront ici dès que vous enverrez ou recevrez de l'argent.</p>
+        <button class="wave-empty-cta" (click)="handleQuickAction('send')" id="btn-first-send">
+          <ion-icon name="paper-plane-outline"></ion-icon>
+          Envoyer de l'argent
+        </button>
+      </div>
+
+      <!-- Transactions List (when not empty) -->
+      <div class="wave-tx-list" *ngIf="transactions.length > 0">
+        <div
+          class="wave-tx-item"
+          *ngFor="let tx of transactions"
+          (click)="viewTransactionDetails(tx)"
+        >
+          <div class="wave-tx-icon" [style.background]="tx.iconBg" [style.color]="tx.iconColor">
+            <ion-icon [name]="tx.icon"></ion-icon>
+          </div>
+          <div class="wave-tx-info">
+            <span class="wave-tx-title">{{ tx.title }}</span>
+            <span class="wave-tx-date">{{ tx.date }} · {{ tx.time }}</span>
+          </div>
+          <div class="wave-tx-amount" [class.credit]="tx.type === 'credit'" [class.debit]="tx.type === 'debit'">
+            {{ tx.type === 'credit' ? '+' : '-' }} {{ formatAmount(tx.amount) }}
+          </div>
+        </div>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- Bottom spacer -->
+  <div style="height: 100px;"></div>
+
+  <!-- ===== MODAL: ENVOYER ===== -->
+  <ion-modal [isOpen]="isSendModalOpen" (didDismiss)="isSendModalOpen = false">
+    <ng-template>
+      <ion-header>
+        <ion-toolbar class="wave-modal-toolbar">
+          <ion-title>Envoyer de l'argent</ion-title>
+          <ion-buttons slot="end">
+            <ion-button (click)="isSendModalOpen = false">
+              <ion-icon name="close-outline"></ion-icon>
+            </ion-button>
+          </ion-buttons>
+        </ion-toolbar>
+      </ion-header>
+      <ion-content class="wave-modal-content ion-padding">
+        <div class="wave-modal-body">
+          <div class="wave-form-group">
+            <label class="wave-label">Destinataire (Nom ou Numéro)</label>
+            <div class="wave-input-box">
+              <ion-icon name="person-outline"></ion-icon>
+              <input type="text" placeholder="Ex: +226 70 00 00 00" [(ngModel)]="sendForm.recipientName" />
+            </div>
+          </div>
+
+          <div class="wave-form-group">
+            <label class="wave-label">Montant rapide</label>
+            <div class="wave-presets">
+              <button
+                *ngFor="let preset of presetAmounts"
+                class="wave-preset-btn"
+                [class.selected]="sendForm.amount === preset"
+                (click)="setPresetAmount(preset)"
+              >{{ formatAmount(preset) }}</button>
+            </div>
+          </div>
+
+          <div class="wave-form-group">
+            <label class="wave-label">Montant (FCFA)</label>
+            <div class="wave-input-box wave-amount-box">
+              <span class="wave-currency">XOF</span>
+              <input type="number" placeholder="0" [(ngModel)]="sendForm.amount" min="500" />
+            </div>
+            <span class="wave-balance-hint">Solde : {{ formattedBalance }}</span>
+          </div>
+
+          <div class="wave-form-group">
+            <label class="wave-label">Motif (optionnel)</label>
+            <div class="wave-input-box">
+              <ion-icon name="chatbox-ellipses-outline"></ion-icon>
+              <input type="text" placeholder="Ex: Loyer, Cadeau..." [(ngModel)]="sendForm.note" />
+            </div>
+          </div>
+
+          <button class="wave-confirm-btn" [disabled]="!sendForm.amount || sendForm.amount <= 0" (click)="confirmSendMoney()">
+            <ion-icon name="paper-plane"></ion-icon>
+            Confirmer l'envoi
+          </button>
+        </div>
+      </ion-content>
+    </ng-template>
+  </ion-modal>
+
+  <!-- ===== MODAL: SCANNER QR ===== -->
+  <ion-modal [isOpen]="isScanModalOpen" (didDismiss)="isScanModalOpen = false">
+    <ng-template>
+      <ion-header>
+        <ion-toolbar class="wave-modal-toolbar">
+          <ion-title>Scanner QR</ion-title>
+          <ion-buttons slot="end">
+            <ion-button (click)="isScanModalOpen = false">
+              <ion-icon name="close-outline"></ion-icon>
+            </ion-button>
+          </ion-buttons>
+        </ion-toolbar>
+      </ion-header>
+      <ion-content class="wave-modal-content ion-padding">
+        <div class="wave-qr-tabs">
+          <button class="wave-tab" [class.active]="scanActiveTab === 'scan'" (click)="scanActiveTab = 'scan'">
+            <ion-icon name="scan-outline"></ion-icon> Scanner
+          </button>
+          <button class="wave-tab" [class.active]="scanActiveTab === 'my_qr'" (click)="scanActiveTab = 'my_qr'">
+            <ion-icon name="qr-code-outline"></ion-icon> Mon QR
+          </button>
+        </div>
+
+        <div *ngIf="scanActiveTab === 'scan'" class="wave-scanner-box">
+          <div class="wave-viewfinder">
+            <div class="w-corner tl"></div>
+            <div class="w-corner tr"></div>
+            <div class="w-corner bl"></div>
+            <div class="w-corner br"></div>
+            <div class="w-laser"></div>
+          </div>
+          <p class="wave-scan-hint">Cadrez le QR Code d'un commerçant ou d'un proche</p>
+        </div>
+
+        <div *ngIf="scanActiveTab === 'my_qr'" class="wave-myqr-box">
+          <svg viewBox="0 0 100 100" class="wave-qr-svg">
+            <rect x="5" y="5" width="28" height="28" rx="4" fill="#1D4ED8" />
+            <rect x="9" y="9" width="20" height="20" rx="2" fill="#fff" />
+            <rect x="13" y="13" width="12" height="12" rx="2" fill="#1D4ED8" />
+            <rect x="67" y="5" width="28" height="28" rx="4" fill="#1D4ED8" />
+            <rect x="71" y="9" width="20" height="20" rx="2" fill="#fff" />
+            <rect x="75" y="13" width="12" height="12" rx="2" fill="#1D4ED8" />
+            <rect x="5" y="67" width="28" height="28" rx="4" fill="#1D4ED8" />
+            <rect x="9" y="71" width="20" height="20" rx="2" fill="#fff" />
+            <rect x="13" y="75" width="12" height="12" rx="2" fill="#1D4ED8" />
+            <rect x="40" y="8" width="8" height="8" rx="1" fill="#1D4ED8" />
+            <rect x="52" y="8" width="6" height="6" rx="1" fill="#1D4ED8" />
+            <rect x="45" y="22" width="10" height="6" rx="1" fill="#1D4ED8" />
+            <rect x="8" y="42" width="6" height="8" rx="1" fill="#1D4ED8" />
+            <rect x="36" y="38" width="14" height="14" rx="2" fill="#1D4ED8" />
+            <rect x="56" y="42" width="8" height="6" rx="1" fill="#1D4ED8" />
+            <rect x="70" y="40" width="10" height="10" rx="1" fill="#1D4ED8" />
+            <rect x="84" y="42" width="8" height="8" rx="1" fill="#1D4ED8" />
+            <rect x="40" y="60" width="8" height="8" rx="1" fill="#1D4ED8" />
+            <rect x="54" y="62" width="10" height="6" rx="1" fill="#1D4ED8" />
+            <rect x="42" y="76" width="10" height="12" rx="2" fill="#1D4ED8" />
+            <rect x="58" y="78" width="8" height="10" rx="1" fill="#1D4ED8" />
+            <rect x="74" y="72" width="16" height="8" rx="1" fill="#1D4ED8" />
+          </svg>
+          <h3 class="wave-qr-name">{{ user.name }}</h3>
+          <p class="wave-qr-phone">{{ user.phone }}</p>
+          <span class="wave-qr-badge">Scan pour me payer instantanément</span>
+        </div>
+      </ion-content>
+    </ng-template>
+  </ion-modal>
+
+  <!-- ===== MODAL: RECHARGER ===== -->
+  <ion-modal [isOpen]="isTopUpModalOpen" (didDismiss)="isTopUpModalOpen = false">
+    <ng-template>
+      <ion-header>
+        <ion-toolbar class="wave-modal-toolbar">
+          <ion-title>Déposer de l'argent</ion-title>
+          <ion-buttons slot="end">
+            <ion-button (click)="isTopUpModalOpen = false">
+              <ion-icon name="close-outline"></ion-icon>
+            </ion-button>
+          </ion-buttons>
+        </ion-toolbar>
+      </ion-header>
+      <ion-content class="wave-modal-content ion-padding">
+        <div class="wave-modal-body">
+          <div class="wave-form-group">
+            <label class="wave-label">Méthode de dépôt</label>
+            <div class="wave-method-grid">
+              <div class="wave-method" [class.selected]="topUpMethod === 'cash'" (click)="topUpMethod = 'cash'">
+                <ion-icon name="cash-outline"></ion-icon>
+                <span>Dépôt Agence</span>
+              </div>
+              <div class="wave-method" [class.selected]="topUpMethod === 'card'" (click)="topUpMethod = 'card'">
+                <ion-icon name="card-outline"></ion-icon>
+                <span>Carte Bancaire</span>
+              </div>
+            </div>
+          </div>
+          <div class="wave-form-group">
+            <label class="wave-label">Montant</label>
+            <div class="wave-presets">
+              <button *ngFor="let p of [5000, 10000, 25000, 50000]" class="wave-preset-btn" [class.selected]="topUpAmount === p" (click)="topUpAmount = p">{{ formatAmount(p) }}</button>
+            </div>
+            <div class="wave-input-box wave-amount-box mt-2">
+              <span class="wave-currency">XOF</span>
+              <input type="number" [(ngModel)]="topUpAmount" />
+            </div>
+          </div>
+          <button class="wave-confirm-btn" (click)="confirmTopUp()">
+            <ion-icon name="wallet"></ion-icon>
+            Confirmer le dépôt ({{ formatAmount(topUpAmount) }})
+          </button>
+        </div>
+      </ion-content>
+    </ng-template>
+  </ion-modal>
+
+  <!-- ===== MODAL: DÉTAILS TRANSACTION ===== -->
+  <ion-modal [isOpen]="isTxDetailsModalOpen" (didDismiss)="isTxDetailsModalOpen = false">
+    <ng-template>
+      <ion-header>
+        <ion-toolbar class="wave-modal-toolbar">
+          <ion-title>Détails</ion-title>
+          <ion-buttons slot="end">
+            <ion-button (click)="isTxDetailsModalOpen = false">
+              <ion-icon name="close-outline"></ion-icon>
+            </ion-button>
+          </ion-buttons>
+        </ion-toolbar>
+      </ion-header>
+      <ion-content class="wave-modal-content ion-padding" *ngIf="selectedTransaction">
+        <div class="wave-receipt">
+          <div class="wave-receipt-icon" [style.background]="selectedTransaction.iconBg" [style.color]="selectedTransaction.iconColor">
+            <ion-icon [name]="selectedTransaction.icon"></ion-icon>
+          </div>
+          <h2 class="wave-receipt-amount" [class.credit]="selectedTransaction.type === 'credit'">
+            {{ selectedTransaction.type === 'credit' ? '+' : '-' }} {{ formatAmount(selectedTransaction.amount) }}
+          </h2>
+          <p class="wave-receipt-title">{{ selectedTransaction.title }}</p>
+          <span class="wave-receipt-status">✅ Transaction confirmée</span>
+          <div class="wave-receipt-divider"></div>
+          <div class="wave-receipt-row"><span>Référence</span><span class="mono">{{ selectedTransaction.reference }}</span></div>
+          <div class="wave-receipt-row"><span>Date</span><span>{{ selectedTransaction.date }} à {{ selectedTransaction.time }}</span></div>
+          <div class="wave-receipt-row"><span>Catégorie</span><span>{{ selectedTransaction.categoryLabel }}</span></div>
+          <div class="wave-receipt-row"><span>Frais</span><span class="green">0 FCFA</span></div>
+          <button class="wave-confirm-btn mt-3" (click)="copyToClipboard(selectedTransaction.reference, 'Référence')">
+            <ion-icon name="copy-outline"></ion-icon> Copier la référence
+          </button>
+        </div>
+      </ion-content>
+    </ng-template>
+  </ion-modal>
+
+  <!-- ===== MODAL: NOTIFICATIONS ===== -->
+  <ion-modal [isOpen]="isNotificationsModalOpen" (didDismiss)="isNotificationsModalOpen = false">
+    <ng-template>
+      <ion-header>
+        <ion-toolbar class="wave-modal-toolbar">
+          <ion-title>Notifications</ion-title>
+          <ion-buttons slot="end">
+            <ion-button (click)="isNotificationsModalOpen = false">
+              <ion-icon name="close-outline"></ion-icon>
+            </ion-button>
+          </ion-buttons>
+        </ion-toolbar>
+      </ion-header>
+      <ion-content class="wave-modal-content ion-padding">
+        <div class="wave-notif-list">
+          <div class="wave-notif-item" *ngFor="let notif of notifications" [class.unread]="notif.unread">
+            <div class="wave-notif-icon" [style.color]="notif.color">
+              <ion-icon [name]="notif.icon"></ion-icon>
+            </div>
+            <div class="wave-notif-text">
+              <h4>{{ notif.title }}</h4>
+              <p>{{ notif.description }}</p>
+              <span>{{ notif.time }}</span>
+            </div>
+          </div>
+          <div class="wave-empty-state" *ngIf="notifications.length === 0">
+            <div class="wave-empty-icon"><ion-icon name="notifications-off-outline"></ion-icon></div>
+            <p class="wave-empty-sub">Aucune notification</p>
+          </div>
+        </div>
+        <button class="wave-confirm-btn mt-3" (click)="markNotificationsAsRead()">
+          Tout marquer comme lu
+        </button>
+      </ion-content>
+    </ng-template>
+  </ion-modal>
+
 </ion-content>

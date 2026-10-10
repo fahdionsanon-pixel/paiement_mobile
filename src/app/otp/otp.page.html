@@ -1,0 +1,88 @@
+<ion-content class="otp-content" [fullscreen]="true">
+  <div class="ambient-glow glow-top"></div>
+
+  <!-- Notification push mobile réaliste (style Android / iOS) -->
+  <div *ngIf="showPushNotification && currentOtp" class="mobile-push-banner">
+    <div class="push-top-row">
+      <div class="push-brand">
+        <div class="push-icon-circle" [class.wa]="channel === 'whatsapp'">
+          <ion-icon [name]="channel === 'whatsapp' ? 'logo-whatsapp' : 'chatbubble-ellipses'"></ion-icon>
+        </div>
+        <span class="push-app-label">{{ channel === 'whatsapp' ? 'WhatsApp' : 'Messages' }}</span>
+        <span class="push-sep">•</span>
+        <span class="push-time">maintenant</span>
+      </div>
+      <button class="push-close-btn" (click)="dismissNotification()">
+        <ion-icon name="close"></ion-icon>
+      </button>
+    </div>
+
+    <div class="push-content-area">
+      <div class="push-sender">PayPulse Sécurité</div>
+      <div class="push-message">
+        Votre code de validation est <strong class="push-highlight-otp">{{ currentOtp }}</strong>. Valable 10 min.
+      </div>
+    </div>
+
+    <div class="push-actions-row">
+      <button class="push-copy-btn" (click)="copyCodeFromNotification()">
+        <ion-icon [name]="notificationCopied ? 'checkmark-circle' : 'copy-outline'"></ion-icon>
+        <span>{{ notificationCopied ? 'Code copié & inséré !' : 'Copier le code' }}</span>
+      </button>
+    </div>
+  </div>
+
+  <div class="otp-container">
+    <div class="top-nav-row">
+      <button class="back-link-btn" (click)="changeNumber()">
+        <ion-icon name="arrow-back-outline"></ion-icon>
+        <span>Retour</span>
+      </button>
+    </div>
+
+    <div class="otp-card glass-panel">
+      <div class="lock-icon-box">
+        <ion-icon name="shield-checkmark"></ion-icon>
+      </div>
+
+      <h2 class="otp-heading">Code de Sécurité</h2>
+      <p class="otp-subheading">
+        Un code de validation à 6 chiffres a été envoyé au :<br />
+        <strong class="highlight-phone">{{ phone }}</strong>
+      </p>
+
+      <div class="otp-input-field">
+        <input
+          type="text"
+          placeholder="••••••"
+          maxlength="6"
+          [(ngModel)]="code"
+          class="otp-native-input"
+          inputmode="numeric"
+          autocomplete="one-time-code"
+        />
+      </div>
+
+      <button
+        class="primary-action-btn"
+        [disabled]="!code || code.length < 6 || loading"
+        (click)="verify()"
+      >
+        <ion-spinner *ngIf="loading" name="crescent"></ion-spinner>
+        <span *ngIf="!loading">Valider et Accéder à l'Accueil</span>
+        <ion-icon *ngIf="!loading" name="checkmark-circle-outline"></ion-icon>
+      </button>
+
+      <div class="otp-secondary-actions">
+        <button class="text-action-btn" [disabled]="loading" (click)="resend()">
+          <ion-icon name="refresh-outline"></ion-icon>
+          <span>Renvoyer un nouveau code SMS</span>
+        </button>
+        <button class="text-action-btn" [disabled]="loading" (click)="changeNumber()">
+          <ion-icon name="create-outline"></ion-icon>
+          <span>Modifier le numéro</span>
+        </button>
+      </div>
+    </div>
+  </div>
+</ion-content>

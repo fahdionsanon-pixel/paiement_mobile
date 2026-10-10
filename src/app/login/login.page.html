@@ -1,0 +1,52 @@
+<ion-content class="login-content" [fullscreen]="true">
+  <div class="ambient-glow glow-top"></div>
+
+  <div class="login-container">
+    <div class="brand-header">
+      <div class="logo-box">
+        <ion-icon name="wallet"></ion-icon>
+      </div>
+      <h1 class="brand-title">PayPulse</h1>
+      <p class="brand-subtitle">Paiement Mobile & Transfert d'Argent</p>
+    </div>
+
+    <div class="auth-card glass-panel">
+      <h2 class="auth-heading">Connexion</h2>
+      <p class="auth-instruction">Entrez votre numéro pour recevoir votre code de vérification par SMS.</p>
+
+      <div class="phone-input-field">
+        <div class="country-badge">
+          <select [(ngModel)]="selectedCountry" class="country-select">
+            <option *ngFor="let c of countries" [value]="c.code">
+              {{ c.flag }} {{ c.code }}
+            </option>
+          </select>
+        </div>
+        <input
+          type="tel"
+          placeholder="Entrez votre numéro"
+          [(ngModel)]="phone"
+          class="phone-native-input"
+        />
+      </div>
+
+      <!-- Bouton SMS Classique (Option 2) -->
+      <button class="primary-action-btn" [disabled]="!isValid() || loading" (click)="confirm()">
+        <ion-spinner *ngIf="loading" name="crescent"></ion-spinner>
+        <span *ngIf="!loading">Recevoir mon code par SMS</span>
+        <ion-icon *ngIf="!loading" name="paper-plane-outline"></ion-icon>
+      </button>
+
+      <!-- Optionnel : WhatsApp -->
+      <button class="whatsapp-action-btn mini-btn" [disabled]="!isValid() || loading" (click)="confirmWhatsApp()">
+        <ion-icon name="logo-whatsapp"></ion-icon>
+        <span>Ou recevoir par WhatsApp</span>
+      </button>
+    </div>
+
+    <div class="security-badge">
+      <ion-icon name="shield-checkmark-outline"></ion-icon>
+      <span>Sécurité bancaire chiffrée SSL 256-bit</span>
+    </div>
+  </div>
+</ion-content>
