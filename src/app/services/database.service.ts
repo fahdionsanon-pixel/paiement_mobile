@@ -574,9 +574,24 @@ export class DatabaseService {
     };
   }
 
-  setWampApiUrl(newUrl: string): void {
+setWampApiUrl(newUrl: string): void {
     this.apiUrl = newUrl.replace(/\/+$/, '');
-    localStorage.setItem(this.API_URL_KEY, this.apiUrl);
+    localStorage.setItem(this.API_URL_KEY, this apiUrl);
     this.checkWampConnection();
   }
+
+  // Delete user from WAMP database by phone number
+  async deleteUserFromWamp(phone: string): Promise<{ success: boolean; message?: string }> {
+    try {
+      const res: any = await firstValueFrom(
+        this.http.post(`${this.apiUrl}/delete_user.php`, {
+          phone: phone,
+        })
+      );
+      return { success: !!(res && res.success), message: res?.message };
+    } catch (e: any) {
+      return { success: false, message: e?.message || 'Connexion échouée' };
+    }
+  }
+}
 }
