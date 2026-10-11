@@ -2,8 +2,9 @@
 require_once __DIR__ . '/config.php';
 
 $input = getJsonInput();
-$userId = isset($input['user_id']) ? (int)$input['user_id'] : 1;
-$pendingTransactions = $input['pending_transactions'] ?? [];
+  $userId = isset($input['user_id']) ? (int)$input['user_id'] : 1;
+  $pendingTransactions = $input['pending_transactions'] ?? [];
+  $phone = $input['phone'] ?? '';
 
 try {
     $pdo->beginTransaction();
@@ -38,8 +39,12 @@ try {
 
     $pdo->commit();
 
-    // Rediriger vers l'état le plus récent
-    $_GET['user_id'] = $userId;
+    // Rediriger vers l'état le plus récent en passant le numéro de téléphone
+    if (!empty($phone)) {
+        $_GET['phone'] = $phone;
+    } else {
+        $_GET['user_id'] = $userId;
+    }
     require __DIR__ . '/get_data.php';
 
 } catch (Exception $e) {

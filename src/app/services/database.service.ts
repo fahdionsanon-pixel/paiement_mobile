@@ -270,6 +270,8 @@ export class DatabaseService {
 
       // Récupérer les transactions créées hors-ligne sur l'appareil
       const pendingTxs = this.getPendingSyncTransactions();
+      const localData = this.getLocalData();
+      const userPhone = localData.user?.phone || '';
 
       let response: any;
       if (pendingTxs.length > 0) {
@@ -277,14 +279,18 @@ export class DatabaseService {
         response = await firstValueFrom(
           this.http.post(`${this.apiUrl}/sync.php`, {
             user_id: 1,
+            phone: userPhone,
             pending_transactions: pendingTxs,
           })
         );
         this.clearPendingSyncTransactions();
       } else {
-        // Récupérer les données fraîches depuis MySQL
+        // Récupérer les données fraîches depuis MySQL en passant le numéro de téléphone
+        const url = userPhone 
+          ? `${this.apiUrl}/get_data.php?phone=${encodeURIComponent(userPhone)}`
+          : `${this.apiUrl}/get_data.php?user_id=1`;
         response = await firstValueFrom(
-          this.http.get(`${this.apiUrl}/get_data.php?user_id=1`)
+          this.http.get(url)
         );
       }
 

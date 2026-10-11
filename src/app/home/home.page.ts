@@ -267,16 +267,24 @@ export class HomePage implements OnInit {
   }
 
   async syncDatabase(showFeedback = false) {
+    const authPhone = this.auth.getPhone();
     const res = await this.dbService.syncWithWamp();
     if (res.success && res.data) {
+      // Only update balance and transactions from WAMP
+      // Preserve the current user's phone and name (don't overwrite with WAMP user_id=1 data)
       this.balanceXOF = res.data.balanceXOF;
       this.transactions = res.data.transactions;
       this.lastSyncTime = res.data.syncedAt || '';
+      
       // Conserver le nom du profil local (ne pas écraser avec les données WAMP)
       const savedProfile = this.dbService.getLocalData();
       if (savedProfile.user && savedProfile.user.name) {
         this.user.name = savedProfile.user.name;
         this.user.initials = savedProfile.user.initials;
+      }
+      // Always use the authenticated phone, not WAMP data
+      if (authPhone) {
+        this.user.phone = authPhone;
       }
       if (showFeedback) {
         this.showToast('✅ Données synchronisées avec la base WAMP MySQL !', 'success');
