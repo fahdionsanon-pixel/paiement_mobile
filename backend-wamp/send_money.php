@@ -41,8 +41,8 @@ try {
     $updateStmt = $pdo->prepare('UPDATE users SET balance = ? WHERE id = ?');
     $updateStmt->execute([$newBalance, $userId]);
 
-    // Insérer la transaction
-    $txRef = 'TX-OUT-' . rand(100000, 999999);
+    // Insérer la transaction avec une référence unique
+    $txRef = 'TX-OUT-' . time() . '-' . rand(1000, 9999);
     $dateLabel = 'Aujourd’hui';
     $timeLabel = date('H:i');
 

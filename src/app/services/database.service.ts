@@ -3,6 +3,16 @@ import { HttpClient } from '@angular/common/http';
 import { BehaviorSubject, firstValueFrom } from 'rxjs';
 import { Transaction, QuickContact } from '../home/home.page';
 
+// Unique ID counter for transaction references
+let txCounter = 0;
+
+function generateUniqueRef(prefix: string): string {
+  txCounter++;
+  const timestamp = Date.now().toString(36);
+  const random = Math.random().toString(36).substring(2, 6);
+  return `${prefix}-${timestamp}-${txCounter}-${random}`;
+}
+
 export interface LocalAppData {
   user: {
     id: number;
@@ -338,7 +348,7 @@ export class DatabaseService {
 
     // 1. Déduction locale immédiate sur l'appareil
     localData.balanceXOF -= amount;
-    const txRef = 'TX-OUT-' + Math.floor(100000 + Math.random() * 900000);
+    const txRef = generateUniqueRef('TX-OUT');
     const dateLabel = 'À l’instant';
     const timeLabel = new Date().toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' });
 
@@ -400,7 +410,7 @@ export class DatabaseService {
 
     // 1. Crédit local immédiat sur l'appareil
     localData.balanceXOF += amount;
-    const txRef = 'DEP-VAL-' + Math.floor(100000 + Math.random() * 900000);
+    const txRef = generateUniqueRef('DEP-VAL');
     const dateLabel = 'À l’instant';
     const timeLabel = new Date().toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' });
 
@@ -484,7 +494,7 @@ export class DatabaseService {
     const newBal = isSelf ? localData.balanceXOF + amount : localData.balanceXOF;
     localData.balanceXOF = newBal;
 
-    const txRef = 'DEP-QR-' + Math.floor(100000 + Math.random() * 900000);
+    const txRef = generateUniqueRef('DEP-QR');
     const localTx: Transaction = {
       id: txRef,
       title: isSelf ? 'Dépôt reçu par QR Code' : `Dépôt vers ${recipientPhone}`,

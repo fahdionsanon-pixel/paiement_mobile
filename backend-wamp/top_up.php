@@ -32,7 +32,7 @@ try {
     $updateStmt->execute([$newBalance, $userId]);
 
     $methodTitle = ($method === 'card') ? 'Par Carte Bancaire' : (($method === 'bank') ? 'Par Virement Bancaire' : 'Dépôt en Agence');
-    $txRef = 'DEP-VAL-' . rand(100000, 999999);
+    $txRef = 'DEP-VAL-' . time() . '-' . rand(1000, 9999);
     $dateLabel = 'Aujourd’hui';
     $timeLabel = date('H:i');
 

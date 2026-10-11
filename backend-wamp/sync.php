@@ -17,7 +17,7 @@ try {
 
         foreach ($pendingTransactions as $tx) {
             $insTx->execute([
-                $tx['reference'] ?? ('TX-SYNC-' . rand(100000, 999999)),
+                $tx['reference'] ?? ('TX-SYNC-' . time() . '-' . rand(1000, 9999)),
                 $userId,
                 $tx['title'],
                 $tx['subtitle'] ?? '',

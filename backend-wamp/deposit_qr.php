@@ -51,7 +51,7 @@ try {
         $upd->execute([$newBalance, $targetUserId]);
     }
 
-    $txRef = 'DEP-QR-' . rand(100000, 999999);
+    $txRef = 'DEP-QR-' . time() . '-' . rand(1000, 9999);
     $dateLabel = 'Aujourd’hui';
     $timeLabel = date('H:i');
 

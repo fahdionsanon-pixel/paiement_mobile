@@ -774,7 +774,7 @@ export class HomePage implements OnInit {
     this.balanceXOF -= amountVal;
     this.monthlyExpense += amountVal;
 
-    const txRef = 'WD-' + Math.floor(100000 + Math.random() * 900000);
+    const txRef = 'WD-' + Date.now().toString(36) + '-' + Math.random().toString(36).substring(2, 8);
     const dateLabel = 'À l’instant';
     const timeLabel = new Date().toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' });
 
