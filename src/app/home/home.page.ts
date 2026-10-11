@@ -227,7 +227,7 @@ export class HomePage implements OnInit {
     });
 
     // Sync with the authenticated phone number (not from local data which may be empty)
-    await this.syncDatabase(authPhone);
+    await this.syncDatabase(false, authPhone);
   }
 
   openProfile() {
