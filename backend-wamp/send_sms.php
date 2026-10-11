@@ -1,16 +1,6 @@
 <?php
 require_once __DIR__ . '/config.php';
 
-// Load Textbelt configuration if available
-$textbeltConfig = [];
-$configPath = __DIR__ . '/textbelt_config.php';
-if (file_exists($configPath)) {
-    require_once $configPath;
-    $textbeltConfig = [
-        'api_key' => $TEXTBELT_API_KEY ?? '',
-    ];
-}
-
 if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
     jsonResponse(['success' => false, 'message' => 'Méthode POST requise'], 405);
 }
@@ -41,41 +31,35 @@ try {
     ');
     $insStmt->execute([$cleanPhone, $otp, $expiresAt]);
 
-    // Tentative d'envoi via Textbelt API (gratuit, jusqu'à 10 SMS/jour)
-    $sentViaTextbelt = false;
-    $apiKey = $textbeltConfig['api_key'] ?? '';
-
-    if (!empty($apiKey)) {
-        $messageBody = "Votre code PayPulse est : $otp";
-        
-        $textbeltUrl = 'https://textbelt.com/send';
-        
-        $postFields = [
-            'phone' => '+' . $cleanPhone,
-            'message' => $messageBody,
-            'apikey' => $apiKey,
-        ];
-
-        $ch = curl_init();
-        curl_setopt_array($ch, [
-            CURLOPT_URL => $textbeltUrl,
-            CURLOPT_POST => true,
-            CURLOPT_POSTFIELDS => http_build_query($postFields),
-            CURLOPT_HTTPHEADER => [
-                'Content-Type: application/x-www-form-urlencoded',
-            ],
-            CURLOPT_RETURNTRANSFER => true,
-            CURLOPT_TIMEOUT => 30,
-        ]);
-
-        $response = curl_exec($ch);
-        $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
-        $curlError = curl_error($ch);
-        curl_close($ch);
-
-        $data = json_decode($response, true);
-        if ($httpCode >= 200 && $httpCode < 300 && !$curlError && $data && isset($data['success']) && $data['success'] === true) {
-            $sentViaTextbelt = true;
+    // Tentative d'envoi via Textbelt API (optionnel, uniquement si configuré)
+    $sentViaSms = false;
+    $configPath = __DIR__ . '/textbelt_config.php';
+    if (file_exists($configPath)) {
+        require_once $configPath;
+        $apiKey = $TEXTBELT_API_KEY ?? '';
+        if (!empty($apiKey)) {
+            $messageBody = "Votre code PayPulse est : $otp";
+            $ch = curl_init();
+            curl_setopt_array($ch, [
+                CURLOPT_URL => 'https://textbelt.com/send',
+                CURLOPT_POST => true,
+                CURLOPT_POSTFIELDS => http_build_query([
+                    'phone' => '+' . $cleanPhone,
+                    'message' => $messageBody,
+                    'apikey' => $apiKey,
+                ]),
+                CURLOPT_HTTPHEADER => ['Content-Type: application/x-www-form-urlencoded'],
+                CURLOPT_RETURNTRANSFER => true,
+                CURLOPT_TIMEOUT => 10,
+            ]);
+            $response = curl_exec($ch);
+            $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+            $curlError = curl_error($ch);
+            curl_close($ch);
+            $data = json_decode($response, true);
+            if ($httpCode >= 200 && $httpCode < 300 && !$curlError && $data && isset($data['success']) && $data['success'] === true) {
+                $sentViaSms = true;
+            }
         }
     }
 
@@ -84,16 +68,16 @@ try {
         'otp' => $otp,
         'phone' => $cleanPhone,
         'expires_at' => $expiresAt,
-        'sent_via_textbelt' => $sentViaTextbelt,
-        'message' => $sentViaTextbelt
+        'sent_via_sms' => $sentViaSms,
+        'message' => $sentViaSms
             ? "Code OTP envoyé par SMS via Textbelt"
-            : "Code OTP généré localement. SMS non envoyé (Textbelt non configuré).",
-        'method' => $sentViaTextbelt ? 'textbelt_sms' : 'local'
+            : "Code OTP généré : $otp",
+        'method' => $sentViaSms ? 'textbelt_sms' : 'local'
     ]);
 
 } catch (Exception $e) {
     jsonResponse([
         'success' => false,
-        'message' => 'Erreur lors de la génération du OTP : ' . $e->getMessage()
+        'message' => 'Erreur : ' . $e->getMessage()
     ], 500);
 }

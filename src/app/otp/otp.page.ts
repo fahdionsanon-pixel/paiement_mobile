@@ -1,8 +1,10 @@
+// OTP Page - Verify OTP then set PIN then create session
+
 import { Component, OnInit } from '@angular/core';
-import { Router } from '@angular/router';
+import { Router, NavigationExtras } from '@angular/router';
 import { ToastController, LoadingController } from '@ionic/angular';
-import { Auth } from '../services/auth';
-import { DatabaseService } from '../services/database.service';
+import { AuthService } from '../services/auth-new.service';
+import { ApiClientService } from '../services/api-client.service';
 
 @Component({
   selector: 'app-otp',
@@ -15,117 +17,91 @@ export class OtpPage implements OnInit {
   phone = '';
   currentOtp = '';
   loading = false;
-  isFirebaseActive = false;
   showPushNotification = true;
   notificationCopied = false;
 
   constructor(
-    private auth: Auth,
+    private auth: AuthService,
+    private api: ApiClientService,
     private router: Router,
     private toastCtrl: ToastController,
-    private loadingCtrl: LoadingController,
-    private db: DatabaseService
+    private loadingCtrl: LoadingController
   ) {}
 
   ngOnInit() {
-    this.phone = this.auth.getPhone();
-    this.currentOtp = this.auth.getCurrentOtp();
-    this.isFirebaseActive = this.auth.isFirebaseConfigured();
-    this.showPushNotification = true;
+    // Get phone from navigation state
+    const nav = this.router.getCurrentNavigation();
+    if (nav?.extras?.state) {
+      this.phone = nav.extras.state['phone'] || '';
+      this.currentOtp = nav.extras.state['otp'] || '';
+    } else {
+      // Fallback
+      this.phone = this.auth.getPhone();
+      this.currentOtp = '';
+    }
   }
 
-  async copyCodeFromNotification() {
-    if (!this.currentOtp) return;
-    this.code = this.currentOtp;
-    this.notificationCopied = true;
+  async verify() {
+    if (!this.code || this.code.length < 6) {
+      this.showToast('Veuillez entrer le code à 6 chiffres', 'warning');
+      return;
+    }
+
+    this.loading = true;
+    const loader = await this.loadingCtrl.create({
+      message: 'Vérification du code...',
+      spinner: 'crescent',
+    });
+    await loader.present();
+
     try {
-      await navigator.clipboard.writeText(this.currentOtp);
-    } catch (e) {}
-    await this.showToast(`Code ${this.currentOtp} copié et inséré !`, 'success', 3000);
+      // Step 1: Verify OTP
+      const result = await this.auth.verifyOtp(this.phone, this.code);
+      await loader.dismiss();
+      this.loading = false;
+
+      if (!result.success) {
+        this.showToast(result.message, 'danger');
+        return;
+      }
+
+      // OTP verified - now check if user has PIN
+      // For now, go to PIN setup if no PIN exists
+      this.router.navigate(['/setup-profile'], {
+        state: { phone: this.phone, needsPin: true }
+      });
+    } catch (err: any) {
+      await loader.dismiss();
+      this.loading = false;
+      this.showToast(err?.message || 'Vérification échouée', 'danger');
+    }
+  }
+
+  async resend() {
+    this.loading = true;
+    try {
+      const res = await this.auth.sendOtp(this.phone);
+      if (res.success) {
+        this.currentOtp = res.otp || '';
+        this.showToast('Nveau code OTP généré', 'success');
+      }
+    } catch (err) {
+      this.showToast('Renvoi échoué', 'danger');
+    }
+    this.loading = false;
+  }
+
+  changeNumber() {
+    this.router.navigate(['/login']);
   }
 
   dismissNotification() {
     this.showPushNotification = false;
   }
 
-  fillCode() {
+  copyCodeFromNotification() {
     this.code = this.currentOtp;
-  }
-
-  async verify() {
-    const codeStr = String(this.code || '').trim();
-    if (codeStr.length < 6) return;
-
-    this.loading = true;
-    const loader = await this.loadingCtrl.create({
-      message: 'Vérification du code SMS...',
-      spinner: 'crescent',
-    });
-    await loader.present();
-
-    try {
-      const res = await this.auth.verifyOtp(codeStr);
-      await loader.dismiss();
-      this.loading = false;
-
-      if (res.success) {
-        await this.showToast(res.message || 'Connexion réussie ! Bienvenue sur PayPulse.', 'success');
-        // Check if the user already has a name configured
-        const profile = await this.db.checkUserProfile(this.phone);
-        if (profile.hasName) {
-          this.router.navigate(['/home'], { replaceUrl: true });
-        } else {
-          this.router.navigate(['/setup-profile'], { replaceUrl: true });
-        }
-      } else {
-        this.code = '';
-        await this.showToast(res.message || 'Code invalide.', 'danger', 5000);
-      }
-    } catch (err: any) {
-      await loader.dismiss();
-      this.loading = false;
-      await this.showToast(`Erreur : ${err?.message || 'Vérification échouée'}`, 'danger');
-    }
-  }
-
-  async resend() {
-    this.loading = true;
-    const loader = await this.loadingCtrl.create({
-      message: 'Renvoi du code SMS...',
-      spinner: 'crescent',
-    });
-    await loader.present();
-
-    try {
-      const res = await this.auth.sendOtp(this.phone);
-      await loader.dismiss();
-      this.loading = false;
-
-      if (res.method === 'firebase') {
-        await this.showToast(`Un nouveau SMS a été envoyé au ${this.phone}.`, 'success');
-      } else {
-        this.currentOtp = res.otp || '';
-        await this.showToast(`Nouveau code simulé : ${res.otp}`, 'primary', 10000);
-      }
-    } catch (err: any) {
-      await loader.dismiss();
-      this.loading = false;
-      await this.showToast(`Erreur lors du renvoi : ${err?.message}`, 'danger');
-    }
-  }
-
-  changeNumber() {
-    this.router.navigate(['/login'], { replaceUrl: true });
-  }
-
-  private async showToast(message: string, color: string, duration = 3000) {
-    const toast = await this.toastCtrl.create({
-      message,
-      color,
-      duration,
-      position: 'top',
-      buttons: [{ text: 'OK', role: 'cancel' }],
-    });
-    await toast.present();
+    this.notificationCopied = true;
+    setTimeout(() => { this.notificationCopied = false; }, 2000);
   }
 }
