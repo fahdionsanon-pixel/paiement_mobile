@@ -579,9 +579,9 @@ export class DatabaseService {
     };
   }
 
-setWampApiUrl(newUrl: string): void {
+  setWampApiUrl(newUrl: string): void {
     this.apiUrl = newUrl.replace(/\/+$/, '');
-    localStorage.setItem(this.API_URL_KEY, this apiUrl);
+    localStorage.setItem(this.API_URL_KEY, this.apiUrl);
     this.checkWampConnection();
   }
 
@@ -598,5 +598,4 @@ setWampApiUrl(newUrl: string): void {
       return { success: false, message: e?.message || 'Connexion échouée' };
     }
   }
-}
 }
