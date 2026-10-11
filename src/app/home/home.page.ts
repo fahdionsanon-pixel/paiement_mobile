@@ -581,6 +581,7 @@ export class HomePage implements OnInit {
   // Contact quick tap
   selectContact(contact: QuickContact) {
     this.sendForm.recipientPhone = contact.phone;
+    this.sendForm.recipientName = contact.name;
     this.isSendModalOpen = true;
   }
 
@@ -604,7 +605,7 @@ export class HomePage implements OnInit {
       return;
     }
 
-    const recipient = this.sendForm.recipientPhone;
+    const recipient = this.sendForm.recipientName || this.sendForm.recipientPhone;
     const amountVal = Number(this.sendForm.amount);
     const noteVal = this.sendForm.note || 'Transfert instantané PayPulse';
 
@@ -623,6 +624,7 @@ export class HomePage implements OnInit {
 
     // Reset form
     this.sendForm = {
+      recipientName: '',
       recipientPhone: '',
       amount: null,
       note: '',
@@ -665,6 +667,7 @@ export class HomePage implements OnInit {
   async payBill(bill: any) {
     this.isServicesModalOpen = false;
     this.sendForm.recipientPhone = bill.phone || '';
+    this.sendForm.recipientName = bill.name;
     this.sendForm.note = 'Paiement facture ' + bill.name;
     this.sendForm.amount = 14200;
     this.isSendModalOpen = true;
