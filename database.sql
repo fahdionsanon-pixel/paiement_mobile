@@ -81,6 +81,18 @@ CREATE TABLE IF NOT EXISTS `savings_goals` (
   FOREIGN KEY (`user_id`) REFERENCES `users`(`id`) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
+-- 6. Table OTPs WhatsApp (pour l'authentification)
+CREATE TABLE IF NOT EXISTS `whatsapp_otps` (
+  `id` INT AUTO_INCREMENT PRIMARY KEY,
+  `phone` VARCHAR(30) NOT NULL,
+  `otp` VARCHAR(10) NOT NULL,
+  `expires_at` DATETIME NOT NULL,
+  `verified` TINYINT(1) NOT NULL DEFAULT 0,
+  `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  INDEX idx_phone_verified (phone, verified),
+  INDEX idx_expires_at (expires_at)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
 -- ===================================================
 -- Initialisation Compte Vide
 -- ===================================================
