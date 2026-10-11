@@ -45,10 +45,10 @@ export class Auth {
   private currentChannel: 'sms' = 'sms';
 
   constructor() {
-    // Restore session if available
+    // Restore session if available (use localStorage for persistence across navigation)
     try {
-      const savedAuth = sessionStorage.getItem('paypulse_auth');
-      const savedPhone = sessionStorage.getItem('paypulse_phone');
+      const savedAuth = localStorage.getItem('paypulse_auth');
+      const savedPhone = localStorage.getItem('paypulse_phone');
       if (savedAuth === 'true') {
         this.authenticated = true;
       }
@@ -117,8 +117,8 @@ export class Auth {
     this.confirmationResult = null;
 
     try {
-      sessionStorage.setItem('paypulse_phone', phoneE164);
-      sessionStorage.setItem('paypulse_channel', 'sms');
+      localStorage.setItem('paypulse_phone', phoneE164);
+      localStorage.setItem('paypulse_channel', 'sms');
     } catch (e) {}
 
     const cleanPhone = phoneE164.replace(/\+/g, '').replace(/\s+/g, '');
@@ -134,7 +134,7 @@ export class Auth {
       if (data && data.success) {
         this.currentOtp = data.otp || '';
         try {
-          if (this.currentOtp) sessionStorage.setItem('paypulse_otp', this.currentOtp);
+          if (this.currentOtp) localStorage.setItem('paypulse_otp', this.currentOtp);
         } catch (e) {}
 
         return {
@@ -157,7 +157,7 @@ export class Auth {
     this.expiresAt = Date.now() + 10 * 60 * 1000;
 
     try {
-      sessionStorage.setItem('paypulse_otp', this.currentOtp);
+      localStorage.setItem('paypulse_otp', this.currentOtp);
     } catch (e) {}
 
     return {
@@ -179,9 +179,9 @@ export class Auth {
         if (userCredential && userCredential.user) {
           this.authenticated = true;
           try {
-            sessionStorage.setItem('paypulse_auth', 'true');
+            localStorage.setItem('paypulse_auth', 'true');
             if (userCredential.user.phoneNumber) {
-              sessionStorage.setItem('paypulse_phone', userCredential.user.phoneNumber);
+              localStorage.setItem('paypulse_phone', userCredential.user.phoneNumber);
             }
           } catch (e) {}
           return {
@@ -193,7 +193,7 @@ export class Auth {
         if (trimmed === '123456') {
           this.authenticated = true;
           try {
-            sessionStorage.setItem('paypulse_auth', 'true');
+            localStorage.setItem('paypulse_auth', 'true');
           } catch (e) {}
           return { success: true, message: 'Code démo accepté (bypass).' };
         }
@@ -220,7 +220,7 @@ export class Auth {
       if (data && data.success) {
         this.authenticated = true;
         try {
-          sessionStorage.setItem('paypulse_auth', 'true');
+          localStorage.setItem('paypulse_auth', 'true');
         } catch (e) {}
         return {
           success: true,
@@ -231,8 +231,8 @@ export class Auth {
       console.warn('Backend vérification SMS non joignable:', err);
     }
 
-    // 3. Fallback local (stockage session)
-    const storedOtp = sessionStorage.getItem('paypulse_otp');
+    // 3. Fallback local (stockage persistant)
+    const storedOtp = localStorage.getItem('paypulse_otp');
     const valid =
       trimmed === this.currentOtp ||
       trimmed === storedOtp ||
@@ -241,7 +241,7 @@ export class Auth {
     if (valid) {
       this.authenticated = true;
       try {
-        sessionStorage.setItem('paypulse_auth', 'true');
+        localStorage.setItem('paypulse_auth', 'true');
       } catch (e) {}
       return { success: true, message: 'Code validé avec succès.' };
     }
@@ -253,23 +253,23 @@ export class Auth {
   }
 
   getPhone(): string {
-    return this.phone || sessionStorage.getItem('paypulse_phone') || '+226 70 12 34 56';
+    return this.phone || localStorage.getItem('paypulse_phone') || '+226 70 12 34 56';
   }
 
   getCurrentOtp(): string {
-    return this.currentOtp || sessionStorage.getItem('paypulse_otp') || '123456';
+    return this.currentOtp || localStorage.getItem('paypulse_otp') || '123456';
   }
 
   isLoggedIn(): boolean {
-    return this.authenticated || sessionStorage.getItem('paypulse_auth') === 'true';
+    return this.authenticated || localStorage.getItem('paypulse_auth') === 'true';
   }
 
   loginDirect(): void {
     this.authenticated = true;
     this.phone = '+226 70 12 34 56';
     try {
-      sessionStorage.setItem('paypulse_auth', 'true');
-      sessionStorage.setItem('paypulse_phone', this.phone);
+      localStorage.setItem('paypulse_auth', 'true');
+      localStorage.setItem('paypulse_phone', this.phone);
     } catch (e) {}
   }
 
@@ -279,9 +279,9 @@ export class Auth {
     this.currentOtp = '';
     this.confirmationResult = null;
     try {
-      sessionStorage.removeItem('paypulse_auth');
-      sessionStorage.removeItem('paypulse_phone');
-      sessionStorage.removeItem('paypulse_otp');
+      localStorage.removeItem('paypulse_auth');
+      localStorage.removeItem('paypulse_phone');
+      localStorage.removeItem('paypulse_otp');
     } catch (e) {}
   }
 }
