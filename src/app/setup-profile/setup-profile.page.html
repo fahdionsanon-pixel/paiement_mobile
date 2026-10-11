@@ -1,0 +1,80 @@
+<ion-content class="setup-content" fullscreen>
+  <div class="setup-container">
+
+    <!-- Logo / Icon top -->
+    <div class="brand-top">
+      <div class="brand-icon">
+        <ion-icon name="person-add-outline"></ion-icon>
+      </div>
+    </div>
+
+    <!-- Title -->
+    <div class="setup-header">
+      <h1 class="setup-title">Bienvenue sur PayPulse</h1>
+      <p class="setup-subtitle">
+        Entrez votre nom pour personnaliser votre compte
+      </p>
+    </div>
+
+    <!-- Form -->
+    <div class="setup-form">
+      <div class="input-group" [class.filled]="firstName.length > 0">
+        <label for="firstName" class="input-label">Prénom *</label>
+        <div class="input-wrapper">
+          <ion-icon name="person-outline" class="input-icon"></ion-icon>
+          <input
+            id="firstName"
+            type="text"
+            class="text-input"
+            [(ngModel)]="firstName"
+            placeholder="Votre prénom"
+            autocomplete="given-name"
+            autocorrect="off"
+            maxlength="40"
+          />
+        </div>
+      </div>
+
+      <div class="input-group" [class.filled]="lastName.length > 0">
+        <label for="lastName" class="input-label">Nom (optionnel)</label>
+        <div class="input-wrapper">
+          <ion-icon name="person-outline" class="input-icon"></ion-icon>
+          <input
+            id="lastName"
+            type="text"
+            class="text-input"
+            [(ngModel)]="lastName"
+            placeholder="Votre nom de famille"
+            autocomplete="family-name"
+            autocorrect="off"
+            maxlength="40"
+          />
+        </div>
+      </div>
+
+      <!-- Preview avatar -->
+      <div class="avatar-preview" *ngIf="firstName.trim().length > 0">
+        <div class="avatar-bubble">
+          {{ firstName.trim().charAt(0).toUpperCase() }}{{ lastName.trim().charAt(0).toUpperCase() }}
+        </div>
+        <span class="avatar-name">{{ fullName }}</span>
+      </div>
+    </div>
+
+    <!-- CTA Button -->
+    <div class="cta-section">
+      <button
+        class="cta-button"
+        [class.active]="isValid && !loading"
+        [disabled]="!isValid || loading"
+        (click)="save()"
+        id="btn-save-profile"
+      >
+        <span *ngIf="!loading">Continuer</span>
+        <ion-spinner *ngIf="loading" name="crescent"></ion-spinner>
+      </button>
+      <p class="cta-hint">Votre nom ne sera visible que par vous</p>
+    </div>
+
+  </div>
+</ion-content>

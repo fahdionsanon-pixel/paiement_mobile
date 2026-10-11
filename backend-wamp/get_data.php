@@ -2,12 +2,25 @@
 require_once __DIR__ . '/config.php';
 
 try {
-    $userId = isset($_GET['user_id']) ? (int)$_GET['user_id'] : 1;
+    $phone = isset($_GET['phone']) ? trim($_GET['phone']) : '';
+    $user = null;
+    $userId = 1;
 
-    // 1. Utilisateur
-    $stmtUser = $pdo->prepare('SELECT * FROM users WHERE id = ?');
-    $stmtUser->execute([$userId]);
-    $user = $stmtUser->fetch();
+    if (!empty($phone)) {
+        $stmtUser = $pdo->prepare('SELECT * FROM users WHERE phone = ? LIMIT 1');
+        $stmtUser->execute([$phone]);
+        $user = $stmtUser->fetch();
+        if ($user) {
+            $userId = (int)$user['id'];
+        }
+    }
+
+    if (!$user) {
+        $userId = isset($_GET['user_id']) ? (int)$_GET['user_id'] : 1;
+        $stmtUser = $pdo->prepare('SELECT * FROM users WHERE id = ?');
+        $stmtUser->execute([$userId]);
+        $user = $stmtUser->fetch();
+    }
 
     if (!$user) {
         jsonResponse(['success' => false, 'message' => 'Utilisateur introuvable'], 404);

@@ -65,6 +65,11 @@ yarn-error.log
 testem.log
 /typings
 
+# Sensitive configuration files
+backend-wamp/config.php
+src/environments/environment.ts
+src/environments/environment.prod.ts
+
 # System files
 .DS_Store
 Thumbs.db

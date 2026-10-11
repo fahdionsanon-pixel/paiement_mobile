@@ -2,6 +2,7 @@ import { Component, OnInit } from '@angular/core';
 import { Router } from '@angular/router';
 import { ToastController, LoadingController } from '@ionic/angular';
 import { Auth } from '../services/auth';
+import { DatabaseService } from '../services/database.service';
 
 @Component({
   selector: 'app-otp',
@@ -23,7 +24,8 @@ export class OtpPage implements OnInit {
     private auth: Auth,
     private router: Router,
     private toastCtrl: ToastController,
-    private loadingCtrl: LoadingController
+    private loadingCtrl: LoadingController,
+    private db: DatabaseService
   ) {}
 
   ngOnInit() {
@@ -70,7 +72,13 @@ export class OtpPage implements OnInit {
 
       if (res.success) {
         await this.showToast(res.message || 'Connexion réussie ! Bienvenue sur PayPulse.', 'success');
-        this.router.navigate(['/home'], { replaceUrl: true });
+        // Check if the user already has a name configured
+        const profile = await this.db.checkUserProfile(this.phone);
+        if (profile.hasName) {
+          this.router.navigate(['/home'], { replaceUrl: true });
+        } else {
+          this.router.navigate(['/setup-profile'], { replaceUrl: true });
+        }
       } else {
         this.code = '';
         await this.showToast(res.message || 'Code invalide.', 'danger', 5000);

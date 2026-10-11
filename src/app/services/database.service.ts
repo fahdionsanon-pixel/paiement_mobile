@@ -35,9 +35,9 @@ export interface LocalAppData {
 const DEFAULT_LOCAL_DATA: LocalAppData = {
   user: {
     id: 1,
-    name: 'Mon Compte',
+    name: '',
     phone: '',
-    initials: 'MC',
+    initials: '',
     verified: false,
     cashbackBalance: 0,
   },
@@ -67,6 +67,8 @@ export class DatabaseService {
   private readonly STORAGE_KEY = 'paypulse_local_device_database';
   private readonly API_URL_KEY = 'paypulse_wamp_api_url';
   private readonly PENDING_SYNC_KEY = 'paypulse_pending_sync_txs';
+  private readonly DB_VERSION_KEY = 'paypulse_db_version';
+  private readonly DB_VERSION = 'v4_clean';
 
   // WAMP Server API URLs to check
   // 1. Port 8080 (serveur PHP dédié)
@@ -92,9 +94,24 @@ export class DatabaseService {
   // 1. Chargement instantané des données locales depuis l'appareil
   getLocalData(): LocalAppData {
     try {
+      const currentVersion = localStorage.getItem(this.DB_VERSION_KEY);
+      if (currentVersion !== this.DB_VERSION) {
+        // Nouvelle version : purge complète des anciennes données résiduelles
+        localStorage.removeItem(this.STORAGE_KEY);
+        localStorage.removeItem(this.PENDING_SYNC_KEY);
+        localStorage.setItem(this.DB_VERSION_KEY, this.DB_VERSION);
+        this.saveLocalData(DEFAULT_LOCAL_DATA);
+        return JSON.parse(JSON.stringify(DEFAULT_LOCAL_DATA));
+      }
+
       const saved = localStorage.getItem(this.STORAGE_KEY);
       if (saved) {
-        return JSON.parse(saved);
+        const parsed = JSON.parse(saved);
+        if (parsed.user && (parsed.user.name === 'Amadou Diallo' || parsed.user.name === 'Mon Compte')) {
+          parsed.user.name = '';
+          parsed.user.initials = '';
+        }
+        return parsed;
       }
     } catch (e) {
       console.warn('Impossible de lire les données locales :', e);
@@ -108,10 +125,86 @@ export class DatabaseService {
   // 2. Sauvegarde immédiate sur l'appareil
   saveLocalData(data: LocalAppData): void {
     try {
+      if (data.user && (data.user.name === 'Amadou Diallo' || data.user.name === 'Mon Compte')) {
+        data.user.name = '';
+        data.user.initials = '';
+      }
       localStorage.setItem(this.STORAGE_KEY, JSON.stringify(data));
     } catch (e) {
       console.error('Erreur lors de la sauvegarde locale sur l’appareil :', e);
     }
+  }
+
+  // Vérifier si le profil de l'utilisateur a déjà un nom
+  async checkUserProfile(phone: string): Promise<{ exists: boolean; hasName: boolean; name: string }> {
+    const local = this.getLocalData();
+
+    // Vérification STRICTE : le téléphone stocké doit correspondre exactement au téléphone demandé
+    if (
+      local.user &&
+      local.user.phone === phone &&         // correspondance exacte obligatoire
+      local.user.name &&
+      local.user.name.trim().length > 0
+    ) {
+      return { exists: true, hasName: true, name: local.user.name };
+    }
+
+    try {
+      const isConnected = await this.checkWampConnection();
+      if (isConnected) {
+        const res: any = await firstValueFrom(
+          this.http.get(`${this.apiUrl}/get_data.php?phone=${encodeURIComponent(phone)}`)
+        );
+        if (res && res.success && res.user) {
+          const userName = (res.user.name || '').trim();
+          if (userName.length > 0 && userName !== 'Amadou Diallo' && userName !== 'Mon Compte') {
+            // Ne sauvegarder que si le téléphone correspond
+            local.user.name = userName;
+            local.user.phone = phone;
+            this.saveLocalData(local);
+            return { exists: true, hasName: true, name: userName };
+          }
+        }
+      }
+    } catch (e) {}
+
+    return { exists: false, hasName: false, name: '' };
+  }
+
+  // Enregistrer le nom complet de l'utilisateur (Option 1)
+  async saveUserProfile(phone: string, fullName: string): Promise<boolean> {
+    const cleanName = fullName.trim();
+    const local = this.getLocalData();
+    local.user.name = cleanName;
+    local.user.phone = phone;
+
+    // Calcul des initiales
+    const parts = cleanName.split(' ');
+    local.user.initials = parts.map(p => p.charAt(0).toUpperCase()).join('').substring(0, 3);
+    this.saveLocalData(local);
+
+    try {
+      if (this.isWampConnected$.value) {
+        const res: any = await firstValueFrom(
+          this.http.post(`${this.apiUrl}/update_profile.php`, {
+            phone,
+            name: cleanName,
+          })
+        );
+        return !!(res && res.success);
+      }
+    } catch (e) {
+      console.warn('Erreur mise à jour profil WAMP :', e);
+    }
+    return true;
+  }
+
+  // Réinitialisation forcée de la base de données
+  resetLocalDatabase(): void {
+    localStorage.removeItem(this.STORAGE_KEY);
+    localStorage.removeItem(this.PENDING_SYNC_KEY);
+    localStorage.setItem(this.DB_VERSION_KEY, this.DB_VERSION);
+    this.saveLocalData(DEFAULT_LOCAL_DATA);
   }
 
   // 3. Vérification de la connexion à WampServer
@@ -188,9 +281,21 @@ export class DatabaseService {
       if (response && response.success) {
         const localData = this.getLocalData();
 
+        const syncedUser = response.user || localData.user;
+        if (syncedUser) {
+          // Conserver le nom du profil local s'il existe déjà
+          if (localData.user && localData.user.name) {
+            syncedUser.name = localData.user.name;
+            syncedUser.initials = localData.user.initials;
+          } else {
+            syncedUser.name = '';
+            syncedUser.initials = '';
+          }
+        }
+
         // Mettre à jour avec les données MySQL certifiées
         const updatedData: LocalAppData = {
-          user: response.user || localData.user,
+          user: syncedUser,
           balanceXOF: response.balanceXOF !== undefined ? response.balanceXOF : localData.balanceXOF,
           card: response.card || localData.card,
           contacts: response.contacts && response.contacts.length ? response.contacts : localData.contacts,
@@ -364,6 +469,79 @@ export class DatabaseService {
 
   private clearPendingSyncTransactions(): void {
     localStorage.removeItem(this.PENDING_SYNC_KEY);
+  }
+
+  // 6. Dépôt direct vers un compte par QR Code
+  async executeQrDeposit(
+    recipientPhone: string,
+    amount: number,
+    note: string
+  ): Promise<{ success: boolean; newBalance: number; localTx: Transaction; synced: boolean; message?: string }> {
+    const localData = this.getLocalData();
+    const isSelf = !localData.user.phone || localData.user.phone === recipientPhone;
+
+    // Si c'est pour son propre compte, incrémenter le solde
+    const newBal = isSelf ? localData.balanceXOF + amount : localData.balanceXOF;
+    localData.balanceXOF = newBal;
+
+    const txRef = 'DEP-QR-' + Math.floor(100000 + Math.random() * 900000);
+    const localTx: Transaction = {
+      id: txRef,
+      title: isSelf ? 'Dépôt reçu par QR Code' : `Dépôt vers ${recipientPhone}`,
+      subtitle: note || 'Dépôt direct par Scan QR',
+      category: 'deposit',
+      categoryLabel: 'Dépôt',
+      icon: isSelf ? 'arrow-down' : 'arrow-up-circle',
+      iconBg: 'rgba(16, 185, 129, 0.15)',
+      iconColor: '#10b981',
+      amount: amount,
+      type: isSelf ? 'credit' : 'debit',
+      date: 'Aujourd’hui',
+      time: new Date().toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' }),
+      status: 'completed',
+      reference: txRef,
+      fees: 0,
+    };
+
+    localData.transactions.unshift(localTx);
+    this.saveLocalData(localData);
+
+    // Synchronisation WAMP
+    let synced = false;
+    try {
+      if (this.isWampConnected$.value) {
+        const res: any = await firstValueFrom(
+          this.http.post(`${this.apiUrl}/deposit_qr.php`, {
+            recipient_phone: recipientPhone,
+            amount: amount,
+            note: note,
+          })
+        );
+        if (res && res.success) {
+          synced = true;
+          if (isSelf && res.newBalance !== undefined) {
+            localData.balanceXOF = res.newBalance;
+            this.saveLocalData(localData);
+          }
+        }
+      }
+    } catch (e) {
+      synced = false;
+    }
+
+    if (!synced) {
+      this.addPendingSyncTransaction(localTx);
+    }
+
+    return {
+      success: true,
+      newBalance: localData.balanceXOF,
+      localTx,
+      synced,
+      message: synced
+        ? `Dépôt de ${amount} FCFA synchronisé avec la base WAMP MySQL.`
+        : `Dépôt de ${amount} FCFA enregistré sur l'appareil (mode local).`,
+    };
   }
 
   setWampApiUrl(newUrl: string): void {

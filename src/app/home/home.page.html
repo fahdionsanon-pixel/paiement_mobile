@@ -7,11 +7,12 @@
     <div class="wave-topbar">
       <div class="wave-user-info">
         <div class="wave-avatar" (click)="openProfile()">
-          {{ user.initials }}
+          <ion-icon name="person-outline"></ion-icon>
         </div>
         <div class="wave-user-text">
-          <span class="wave-greeting">Bonjour 👋</span>
-          <span class="wave-username">{{ user.name }}</span>
+          <span class="wave-greeting">
+            Bonjour<span *ngIf="user.name">, {{ user.name.split(' ')[0] }}</span> 👋
+          </span>
         </div>
       </div>
       <div class="wave-topbar-actions">
@@ -38,20 +39,13 @@
       <p class="wave-phone-label">{{ user.phone }}</p>
     </div>
 
-    <!-- 4 Main Action Buttons (Wave Style) -->
+    <!-- 3 Main Action Buttons (Wave Style) -->
     <div class="wave-actions-row">
       <button class="wave-action-btn" (click)="handleQuickAction('send')" id="btn-envoyer">
         <div class="wave-action-icon">
           <ion-icon name="paper-plane-outline"></ion-icon>
         </div>
         <span>Envoyer</span>
-      </button>
-
-      <button class="wave-action-btn" (click)="handleQuickAction('receive')" id="btn-recevoir">
-        <div class="wave-action-icon">
-          <ion-icon name="arrow-down-outline"></ion-icon>
-        </div>
-        <span>Recevoir</span>
       </button>
 
       <button class="wave-action-btn" (click)="handleQuickAction('scan')" id="btn-scanner">
@@ -67,6 +61,37 @@
         </div>
         <span>Déposer</span>
       </button>
+    </div>
+
+    <!-- ===== CARTE CODE QR DU COMPTE (Wave Style) ===== -->
+    <div class="wave-account-qr-card">
+      <div class="wave-account-qr-header">
+        <div class="wave-account-qr-badge">
+          <ion-icon name="qr-code-outline"></ion-icon>
+          <span>Mon QR Code de Compte</span>
+        </div>
+        <button class="wave-account-qr-expand-btn" (click)="openQrFullscreen()" id="btn-expand-qr">
+          <ion-icon name="expand-outline"></ion-icon>
+          <span>Agrandir</span>
+        </button>
+      </div>
+
+      <div class="wave-account-qr-body">
+        <div class="wave-account-qr-img-box" (click)="openQrFullscreen()">
+          <img *ngIf="myQrCodeDataUrl" [src]="myQrCodeDataUrl" alt="Mon Code QR" class="wave-account-qr-img" />
+          <div *ngIf="!myQrCodeDataUrl" class="wave-account-qr-loading">
+            <ion-spinner name="crescent" color="primary"></ion-spinner>
+          </div>
+        </div>
+
+        <div class="wave-account-qr-meta">
+          <span class="meta-label">Numéro du compte</span>
+          <span class="meta-phone">{{ user.phone || 'Compte actif' }}</span>
+          <p class="meta-desc">
+            Présentez ce QR Code pour que l'autre utilisateur le scanne et effectue un dépôt instantané sur ce compte.
+          </p>
+        </div>
+      </div>
     </div>
   </div>
 
@@ -197,13 +222,13 @@
   </ion-modal>
 
   <!-- ===== MODAL: SCANNER QR ===== -->
-  <ion-modal [isOpen]="isScanModalOpen" (didDismiss)="isScanModalOpen = false">
+  <ion-modal [isOpen]="isScanModalOpen" (didDismiss)="closeScanner()">
     <ng-template>
       <ion-header>
         <ion-toolbar class="wave-modal-toolbar">
-          <ion-title>Scanner QR</ion-title>
+          <ion-title>Scanner QR Code</ion-title>
           <ion-buttons slot="end">
-            <ion-button (click)="isScanModalOpen = false">
+            <ion-button (click)="closeScanner()">
               <ion-icon name="close-outline"></ion-icon>
             </ion-button>
           </ion-buttons>
@@ -211,53 +236,150 @@
       </ion-header>
       <ion-content class="wave-modal-content ion-padding">
         <div class="wave-qr-tabs">
-          <button class="wave-tab" [class.active]="scanActiveTab === 'scan'" (click)="scanActiveTab = 'scan'">
-            <ion-icon name="scan-outline"></ion-icon> Scanner
+          <button class="wave-tab" [class.active]="scanActiveTab === 'scan'" (click)="scanActiveTab = 'scan'; startCamera()">
+            <ion-icon name="scan-outline"></ion-icon> Scanner un compte
           </button>
-          <button class="wave-tab" [class.active]="scanActiveTab === 'my_qr'" (click)="scanActiveTab = 'my_qr'">
+          <button class="wave-tab" [class.active]="scanActiveTab === 'my_qr'" (click)="scanActiveTab = 'my_qr'; stopCamera()">
             <ion-icon name="qr-code-outline"></ion-icon> Mon QR
           </button>
         </div>
 
+        <!-- Onglet Scanner -->
         <div *ngIf="scanActiveTab === 'scan'" class="wave-scanner-box">
           <div class="wave-viewfinder">
+            <video id="waveCameraVideo" autoplay playsinline muted class="wave-camera-video"></video>
             <div class="w-corner tl"></div>
             <div class="w-corner tr"></div>
             <div class="w-corner bl"></div>
             <div class="w-corner br"></div>
             <div class="w-laser"></div>
           </div>
-          <p class="wave-scan-hint">Cadrez le QR Code d'un commerçant ou d'un proche</p>
+
+          <p class="wave-scan-hint" *ngIf="isCameraActive">Pointez la caméra vers le code QR de l'autre compte</p>
+          <p class="wave-camera-error" *ngIf="cameraErrorMessage">{{ cameraErrorMessage }}</p>
+
+          <div class="wave-scanner-actions">
+            <label class="wave-scan-action-btn">
+              <ion-icon name="image-outline"></ion-icon>
+              <span>Importer une photo QR</span>
+              <input type="file" (change)="onFileQrSelected($event)" accept="image/*" style="display:none;" />
+            </label>
+
+            <button class="wave-scan-action-btn test-btn" (click)="simulateScanTest('+226 70 88 99 00')">
+              <ion-icon name="flash-outline"></ion-icon>
+              <span>Tester le scan d'un compte (+226 70 88 99 00)</span>
+            </button>
+          </div>
         </div>
 
+        <!-- Onglet Mon QR -->
         <div *ngIf="scanActiveTab === 'my_qr'" class="wave-myqr-box">
-          <svg viewBox="0 0 100 100" class="wave-qr-svg">
-            <rect x="5" y="5" width="28" height="28" rx="4" fill="#1D4ED8" />
-            <rect x="9" y="9" width="20" height="20" rx="2" fill="#fff" />
-            <rect x="13" y="13" width="12" height="12" rx="2" fill="#1D4ED8" />
-            <rect x="67" y="5" width="28" height="28" rx="4" fill="#1D4ED8" />
-            <rect x="71" y="9" width="20" height="20" rx="2" fill="#fff" />
-            <rect x="75" y="13" width="12" height="12" rx="2" fill="#1D4ED8" />
-            <rect x="5" y="67" width="28" height="28" rx="4" fill="#1D4ED8" />
-            <rect x="9" y="71" width="20" height="20" rx="2" fill="#fff" />
-            <rect x="13" y="75" width="12" height="12" rx="2" fill="#1D4ED8" />
-            <rect x="40" y="8" width="8" height="8" rx="1" fill="#1D4ED8" />
-            <rect x="52" y="8" width="6" height="6" rx="1" fill="#1D4ED8" />
-            <rect x="45" y="22" width="10" height="6" rx="1" fill="#1D4ED8" />
-            <rect x="8" y="42" width="6" height="8" rx="1" fill="#1D4ED8" />
-            <rect x="36" y="38" width="14" height="14" rx="2" fill="#1D4ED8" />
-            <rect x="56" y="42" width="8" height="6" rx="1" fill="#1D4ED8" />
-            <rect x="70" y="40" width="10" height="10" rx="1" fill="#1D4ED8" />
-            <rect x="84" y="42" width="8" height="8" rx="1" fill="#1D4ED8" />
-            <rect x="40" y="60" width="8" height="8" rx="1" fill="#1D4ED8" />
-            <rect x="54" y="62" width="10" height="6" rx="1" fill="#1D4ED8" />
-            <rect x="42" y="76" width="10" height="12" rx="2" fill="#1D4ED8" />
-            <rect x="58" y="78" width="8" height="10" rx="1" fill="#1D4ED8" />
-            <rect x="74" y="72" width="16" height="8" rx="1" fill="#1D4ED8" />
-          </svg>
-          <h3 class="wave-qr-name">{{ user.name }}</h3>
-          <p class="wave-qr-phone">{{ user.phone }}</p>
-          <span class="wave-qr-badge">Scan pour me payer instantanément</span>
+          <div class="wave-myqr-card" (click)="openQrFullscreen()">
+            <img *ngIf="myQrCodeDataUrl" [src]="myQrCodeDataUrl" alt="Mon QR Code" class="wave-myqr-img" />
+            <div *ngIf="!myQrCodeDataUrl" class="wave-myqr-loading">
+              <ion-spinner name="crescent" color="primary"></ion-spinner>
+            </div>
+            <p class="wave-qr-phone">{{ user.phone || 'Compte actif' }}</p>
+            <span class="wave-qr-badge">Faites scanner ce code pour recevoir un dépôt</span>
+            <button class="wave-myqr-expand-action" (click)="openQrFullscreen()">
+              <ion-icon name="expand-outline"></ion-icon>
+              Plein écran
+            </button>
+          </div>
+        </div>
+      </ion-content>
+    </ng-template>
+  </ion-modal>
+
+  <!-- ===== MODAL: QR CODE EN PLEIN ÉCRAN ===== -->
+  <ion-modal [isOpen]="isQrFullscreenModalOpen" (didDismiss)="isQrFullscreenModalOpen = false">
+    <ng-template>
+      <ion-header>
+        <ion-toolbar class="wave-modal-toolbar">
+          <ion-title>Code QR de Paiement</ion-title>
+          <ion-buttons slot="end">
+            <ion-button (click)="isQrFullscreenModalOpen = false">
+              <ion-icon name="close-outline"></ion-icon>
+            </ion-button>
+          </ion-buttons>
+        </ion-toolbar>
+      </ion-header>
+      <ion-content class="wave-modal-content ion-padding">
+        <div class="wave-fullscreen-qr-wrapper">
+          <div class="wave-fullscreen-qr-card">
+            <div class="fullscreen-qr-img-box">
+              <img *ngIf="myQrCodeDataUrl" [src]="myQrCodeDataUrl" alt="QR Code Plein Écran" />
+            </div>
+          </div>
+        </div>
+      </ion-content>
+    </ng-template>
+  </ion-modal>
+
+  <!-- ===== MODAL: EFFECTUER UN DÉPÔT SUR LE COMPTE SCANNÉ ===== -->
+  <ion-modal [isOpen]="isScannedDepositModalOpen" (didDismiss)="isScannedDepositModalOpen = false">
+    <ng-template>
+      <ion-header>
+        <ion-toolbar class="wave-modal-toolbar">
+          <ion-title>Dépôt sur le compte scanné</ion-title>
+          <ion-buttons slot="end">
+            <ion-button (click)="isScannedDepositModalOpen = false">
+              <ion-icon name="close-outline"></ion-icon>
+            </ion-button>
+          </ion-buttons>
+        </ion-toolbar>
+      </ion-header>
+      <ion-content class="wave-modal-content ion-padding">
+        <div class="wave-modal-body">
+
+          <!-- Carte Compte Détecté -->
+          <div class="wave-scanned-account-box">
+            <div class="scanned-icon">
+              <ion-icon name="checkmark-circle"></ion-icon>
+            </div>
+            <div class="scanned-info">
+              <span class="scanned-tag">Compte scanné avec succès</span>
+              <h3 class="scanned-phone">{{ scannedRecipientPhone }}</h3>
+            </div>
+          </div>
+
+          <!-- Montant du dépôt -->
+          <div class="wave-form-group">
+            <label class="wave-label">Montant à déposer (FCFA)</label>
+            <div class="wave-presets">
+              <button
+                *ngFor="let p of [1000, 2000, 5000, 10000, 25000, 50000]"
+                class="wave-preset-btn"
+                [class.selected]="scannedDepositAmount === p"
+                (click)="scannedDepositAmount = p"
+              >{{ formatAmount(p) }}</button>
+            </div>
+
+            <div class="wave-input-box wave-amount-box mt-2">
+              <span class="wave-currency">XOF</span>
+              <input type="number" placeholder="0" [(ngModel)]="scannedDepositAmount" min="100" />
+            </div>
+            <span class="wave-balance-hint">Votre solde : {{ formattedBalance }}</span>
+          </div>
+
+          <!-- Motif -->
+          <div class="wave-form-group">
+            <label class="wave-label">Motif du dépôt (optionnel)</label>
+            <div class="wave-input-box">
+              <ion-icon name="receipt-outline"></ion-icon>
+              <input type="text" placeholder="Ex: Dépôt d'argent, Virement..." [(ngModel)]="scannedDepositNote" />
+            </div>
+          </div>
+
+          <button
+            class="wave-confirm-btn"
+            [disabled]="!scannedDepositAmount || scannedDepositAmount <= 0"
+            (click)="confirmScannedDeposit()"
+            id="btn-confirm-scanned-deposit"
+          >
+            <ion-icon name="arrow-up-circle-outline"></ion-icon>
+            Confirmer le dépôt ({{ formatAmount(scannedDepositAmount || 0) }})
+          </button>
         </div>
       </ion-content>
     </ng-template>

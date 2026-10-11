@@ -13,6 +13,10 @@ const routes: Routes = [
     loadChildren: () => import('./otp/otp.module').then(m => m.OtpPageModule),
   },
   {
+    path: 'setup-profile',
+    loadChildren: () => import('./setup-profile/setup-profile.module').then(m => m.SetupProfilePageModule),
+  },
+  {
     path: 'home',
     loadChildren: () => import('./home/home.module').then(m => m.HomePageModule),
     canActivate: [authGuard],

@@ -3,6 +3,8 @@ import { Router } from '@angular/router';
 import { ToastController } from '@ionic/angular';
 import { Auth } from '../services/auth';
 import { DatabaseService } from '../services/database.service';
+import * as QRCode from 'qrcode';
+import jsQR from 'jsqr';
 
 export interface Transaction {
   id: string;
@@ -47,9 +49,9 @@ export interface QuickAction {
 export class HomePage implements OnInit {
   // User info
   user = {
-    name: 'Mon Compte',
+    name: '',
     phone: '',
-    initials: 'MC',
+    initials: '',
     verified: false,
     cashbackBalance: 0,
   };
@@ -77,12 +79,27 @@ export class HomePage implements OnInit {
 
   // Modals visibility
   isSendModalOpen = false;
-  isReceiveModalOpen = false;
   isScanModalOpen = false;
+  isQrFullscreenModalOpen = false;
+  isScannedDepositModalOpen = false;
   isTopUpModalOpen = false;
   isTxDetailsModalOpen = false;
   isNotificationsModalOpen = false;
   isServicesModalOpen = false;
+
+  // QR Code du compte
+  myQrCodeDataUrl = '';
+
+  // Dépôt après scan
+  scannedRecipientPhone = '';
+  scannedDepositAmount: number | null = 5000;
+  scannedDepositNote = 'Dépôt direct par Scan QR';
+
+  // Scanner et Caméra
+  isCameraActive = false;
+  cameraErrorMessage = '';
+  private cameraStream: MediaStream | null = null;
+  private scanAnimFrameId: any = null;
 
   // Active transaction in modal
   selectedTransaction: Transaction | null = null;
@@ -158,18 +175,14 @@ export class HomePage implements OnInit {
   ) {}
 
   async ngOnInit() {
-    // Charger les données locales
-    this.loadFromLocalDevice();
-
     // Récupérer le numéro de téléphone depuis l'auth
     const authPhone = this.auth.getPhone();
-    if (authPhone) {
-      this.user.phone = authPhone;
-      // Générer les initiales depuis le numéro si pas de nom
-      if (this.user.name === 'Mon Compte' && authPhone.length >= 2) {
-        this.user.initials = authPhone.slice(-2);
-      }
-    }
+
+    // Charger les données locales SEULEMENT si elles appartiennent à ce compte
+    this.loadFromLocalDevice(authPhone);
+
+    // Générer le QR Code dynamique du compte
+    await this.generateMyQrCode();
 
     this.wampApiUrl = this.dbService.apiUrl;
 
@@ -188,9 +201,32 @@ export class HomePage implements OnInit {
     this.showToast(`Connecté : ${this.user.phone || 'Numéro inconnu'}`, 'primary');
   }
 
-  loadFromLocalDevice() {
+  loadFromLocalDevice(authPhone?: string) {
     const local = this.dbService.getLocalData();
-    this.user = local.user;
+
+    // Vérification cruciale : les données stockées appartiennent-elles à ce compte ?
+    const storedPhone = local.user?.phone || '';
+    const isSameUser = !storedPhone || !authPhone || storedPhone === authPhone;
+
+    if (!isSameUser) {
+      // Autre utilisateur détecté sur cet appareil → réinitialiser proprement
+      console.log(`Compte différent détecté (${storedPhone} ≠ ${authPhone}). Réinitialisation des données locales.`);
+      this.dbService.resetLocalDatabase();
+      // Repartir sur des données vides pour ce nouvel utilisateur
+      this.user = { name: '', phone: authPhone || '', initials: '', verified: false, cashbackBalance: 0 };
+      this.balanceXOF = 0;
+      this.transactions = [];
+      this.quickContacts = [];
+      this.savingsGoal = { title: '', current: 0, target: 0, percent: 0 };
+      this.lastSyncTime = 'Mode local';
+      return;
+    }
+
+    // Même utilisateur → charger ses données normalement
+    this.user = { ...local.user };
+    if (authPhone) {
+      this.user.phone = authPhone;
+    }
     this.balanceXOF = local.balanceXOF;
     this.transactions = local.transactions;
     this.quickContacts = local.contacts;
@@ -204,6 +240,12 @@ export class HomePage implements OnInit {
       this.balanceXOF = res.data.balanceXOF;
       this.transactions = res.data.transactions;
       this.lastSyncTime = res.data.syncedAt || '';
+      // Conserver le nom du profil local (ne pas écraser avec les données WAMP)
+      const savedProfile = this.dbService.getLocalData();
+      if (savedProfile.user && savedProfile.user.name) {
+        this.user.name = savedProfile.user.name;
+        this.user.initials = savedProfile.user.initials;
+      }
       if (showFeedback) {
         this.showToast('✅ Données synchronisées avec la base WAMP MySQL !', 'success');
       }
@@ -307,12 +349,8 @@ export class HomePage implements OnInit {
       case 'send':
         this.openSendModal();
         break;
-      case 'receive':
-        this.isReceiveModalOpen = true;
-        break;
       case 'scan':
-        this.scanActiveTab = 'scan';
-        this.isScanModalOpen = true;
+        this.openScanner();
         break;
       case 'topup':
         this.isTopUpModalOpen = true;
@@ -327,6 +365,216 @@ export class HomePage implements OnInit {
         break;
       default:
         this.isServicesModalOpen = true;
+    }
+  }
+
+  // ===== GESTION DU CODE QR DU COMPTE & SCAN =====
+  async generateMyQrCode() {
+    try {
+      const phone = this.user.phone || '+22670000000';
+      const payload = JSON.stringify({
+        app: 'paypulse',
+        action: 'deposit',
+        phone: phone,
+      });
+
+      this.myQrCodeDataUrl = await QRCode.toDataURL(payload, {
+        width: 380,
+        margin: 2,
+        color: {
+          dark: '#1D4ED8',
+          light: '#FFFFFF',
+        },
+        errorCorrectionLevel: 'M',
+      });
+    } catch (e) {
+      console.error('Erreur génération QR Code :', e);
+    }
+  }
+
+  openQrFullscreen() {
+    this.isQrFullscreenModalOpen = true;
+  }
+
+  openScanner() {
+    this.scanActiveTab = 'scan';
+    this.isScanModalOpen = true;
+    setTimeout(() => {
+      this.startCamera();
+    }, 350);
+  }
+
+  closeScanner() {
+    this.stopCamera();
+    this.isScanModalOpen = false;
+  }
+
+  async startCamera() {
+    this.cameraErrorMessage = '';
+    this.isCameraActive = false;
+
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+      this.cameraErrorMessage = 'Caméra indisponible ou non autorisée dans ce navigateur.';
+      return;
+    }
+
+    try {
+      this.cameraStream = await navigator.mediaDevices.getUserMedia({
+        video: { facingMode: 'environment' },
+      });
+
+      const video = document.getElementById('waveCameraVideo') as HTMLVideoElement;
+      if (video) {
+        video.srcObject = this.cameraStream;
+        video.setAttribute('playsinline', 'true');
+        await video.play();
+        this.isCameraActive = true;
+        this.scanVideoFrame(video);
+      }
+    } catch (err: any) {
+      console.warn('Accès caméra non accordé :', err);
+      this.cameraErrorMessage = 'Impossible d’accéder à la caméra. Utilisez l’import ou le test de scan.';
+    }
+  }
+
+  stopCamera() {
+    if (this.scanAnimFrameId) {
+      cancelAnimationFrame(this.scanAnimFrameId);
+      this.scanAnimFrameId = null;
+    }
+    if (this.cameraStream) {
+      this.cameraStream.getTracks().forEach((track) => track.stop());
+      this.cameraStream = null;
+    }
+    this.isCameraActive = false;
+  }
+
+  private scanVideoFrame(video: HTMLVideoElement) {
+    if (!this.isScanModalOpen || this.scanActiveTab !== 'scan') {
+      this.stopCamera();
+      return;
+    }
+
+    if (video.readyState === video.HAVE_ENOUGH_DATA) {
+      const canvas = document.createElement('canvas');
+      canvas.width = video.videoWidth;
+      canvas.height = video.videoHeight;
+      const ctx = canvas.getContext('2d');
+      if (ctx) {
+        ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+        const imgData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+        const code = jsQR(imgData.data, imgData.width, imgData.height, {
+          inversionAttempts: 'dontInvert',
+        });
+        if (code && code.data) {
+          this.onQrCodeScanned(code.data);
+          return;
+        }
+      }
+    }
+
+    this.scanAnimFrameId = requestAnimationFrame(() => this.scanVideoFrame(video));
+  }
+
+  onQrCodeScanned(rawData: string) {
+    this.stopCamera();
+    this.isScanModalOpen = false;
+
+    let phone = '';
+
+    // 1. Tenter de parser du JSON
+    try {
+      const parsed = JSON.parse(rawData);
+      if (parsed && (parsed.phone || parsed.account)) {
+        phone = parsed.phone || parsed.account;
+      }
+    } catch (e) {}
+
+    // 2. Format PAYPULSE:ACCOUNT:...
+    if (!phone && rawData.includes('PAYPULSE:ACCOUNT:')) {
+      phone = rawData.replace('PAYPULSE:ACCOUNT:', '').trim();
+    }
+
+    // 3. Détection de numéro de téléphone
+    if (!phone) {
+      const match = rawData.match(/(\+?\d[\d\s-]{6,15})/);
+      if (match) {
+        phone = match[0].trim();
+      } else {
+        phone = rawData.trim();
+      }
+    }
+
+    if (!phone) {
+      this.showToast('Code QR non reconnu comme un compte de paiement.', 'warning');
+      return;
+    }
+
+    // Ouvrir le modal de dépôt pour ce compte
+    this.scannedRecipientPhone = phone;
+    this.scannedDepositAmount = 5000;
+    this.scannedDepositNote = `Dépôt direct par QR Code`;
+    this.isScannedDepositModalOpen = true;
+
+    this.showToast(`🎯 Compte détecté : ${phone}`, 'success');
+  }
+
+  onFileQrSelected(event: any) {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = (e: any) => {
+      const img = new Image();
+      img.onload = () => {
+        const canvas = document.createElement('canvas');
+        canvas.width = img.width;
+        canvas.height = img.height;
+        const ctx = canvas.getContext('2d');
+        if (ctx) {
+          ctx.drawImage(img, 0, 0);
+          const imgData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+          const code = jsQR(imgData.data, imgData.width, imgData.height);
+          if (code && code.data) {
+            this.onQrCodeScanned(code.data);
+          } else {
+            this.showToast('Aucun code QR détecté dans cette image.', 'warning');
+          }
+        }
+      };
+      img.src = e.target.result;
+    };
+    reader.readAsDataURL(file);
+  }
+
+  simulateScanTest(phoneToTest = '+226 70 88 99 00') {
+    this.onQrCodeScanned(phoneToTest);
+  }
+
+  async confirmScannedDeposit() {
+    if (!this.scannedDepositAmount || this.scannedDepositAmount <= 0) {
+      this.showToast('Veuillez entrer un montant valide.', 'danger');
+      return;
+    }
+
+    const amount = Number(this.scannedDepositAmount);
+    const recipient = this.scannedRecipientPhone;
+    const note = this.scannedDepositNote || 'Dépôt direct par Scan QR';
+
+    const result = await this.dbService.executeQrDeposit(recipient, amount, note);
+
+    if (result.success) {
+      this.balanceXOF = result.newBalance;
+      this.transactions.unshift(result.localTx);
+      this.isScannedDepositModalOpen = false;
+
+      const msg = result.synced
+        ? `✅ Dépôt de ${this.formatAmount(amount)} effectué avec succès sur le compte ${recipient} (WAMP MySQL) !`
+        : `📱 Dépôt de ${this.formatAmount(amount)} enregistré sur l'appareil pour le compte ${recipient} !`;
+
+      await this.showToast(msg, 'success');
+    } else {
+      this.showToast('Erreur lors du dépôt sur le compte scanné.', 'danger');
     }
   }
 
@@ -442,12 +690,11 @@ export class HomePage implements OnInit {
     if (tab === 'cards') {
       this.cardView = 'virtual_card';
     } else if (tab === 'scan') {
-      this.scanActiveTab = 'scan';
-      this.isScanModalOpen = true;
+      this.openScanner();
     } else if (tab === 'analytics') {
       this.showToast('Section Statistiques détaillées', 'primary');
     } else if (tab === 'profile') {
-      this.showToast(`Connecté en tant que ${this.user.name}`, 'secondary');
+      this.showToast(`Connecté : ${this.user.phone || 'Numéro inconnu'}`, 'secondary');
     }
   }
 
