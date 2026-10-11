@@ -184,6 +184,18 @@
           </div>
 
           <div class="wave-form-group">
+            <label class="wave-label">Montant rapide</label>
+            <div class="wave-presets">
+              <button
+                *ngFor="let preset of presetAmounts"
+                class="wave-preset-btn"
+                [class.selected]="sendForm.amount === preset"
+                (click)="setPresetAmount(preset)"
+              >{{ formatAmount(preset) }}</button>
+            </div>
+          </div>
+
+          <div class="wave-form-group">
             <label class="wave-label">Montant (FCFA) *</label>
             <div class="wave-input-box wave-amount-box">
               <span class="wave-currency">XOF</span>

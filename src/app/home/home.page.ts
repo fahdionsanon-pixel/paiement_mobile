@@ -106,6 +106,7 @@ export class HomePage implements OnInit {
 
   // Send Money form
   sendForm = {
+    recipientName: '',
     recipientPhone: '',
     amount: null as number | null,
     note: '',
@@ -585,6 +586,10 @@ export class HomePage implements OnInit {
 
   openSendModal() {
     this.isSendModalOpen = true;
+  }
+
+  setPresetAmount(amount: number) {
+    this.sendForm.amount = amount;
   }
 
   // Execute Send Money
