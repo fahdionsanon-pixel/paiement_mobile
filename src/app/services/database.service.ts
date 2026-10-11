@@ -149,14 +149,14 @@ export class DatabaseService {
   async checkUserProfile(phone: string): Promise<{ exists: boolean; hasName: boolean; name: string }> {
     const local = this.getLocalData();
 
-    // Vérification STRICTE : le téléphone stocké doit correspondre exactement au téléphone demandé
+    // Helper to normalize phone numbers for consistent comparison
     const normalizePhone = (p: string) => (p || '').replace(/[\s+\-\(\).]/g, '');
     const storedPhoneNorm = normalizePhone(local.user?.phone || '');
     const phoneNorm = normalizePhone(phone);
-    
+
     if (
       local.user &&
-      storedPhoneNorm === phoneNorm &&         // correspondance normalisée obligatoire
+      storedPhoneNorm === phoneNorm &&
       local.user.name &&
       local.user.name.trim().length > 0
     ) {
@@ -192,26 +192,34 @@ export class DatabaseService {
   async saveUserProfile(phone: string, fullName: string): Promise<boolean> {
     const cleanName = fullName.trim();
     const local = this.getLocalData();
-    local.user.name = cleanName;
-    local.user.phone = phone;
+    
+    // Only update if the phone matches or no phone is set yet
+    const normalizePhone = (p: string) => (p || '').replace(/[\s+\-\(\).]/g, '');
+    const phoneNorm = normalizePhone(phone);
+    const storedPhoneNorm = normalizePhone(local.user?.phone || '');
+    
+    if (!storedPhoneNorm || storedPhoneNorm === phoneNorm) {
+      local.user.name = cleanName;
+      local.user.phone = phone;
 
-    // Calcul des initiales
-    const parts = cleanName.split(' ');
-    local.user.initials = parts.map(p => p.charAt(0).toUpperCase()).join('').substring(0, 3);
-    this.saveLocalData(local);
+      // Calcul des initiales
+      const parts = cleanName.split(' ');
+      local.user.initials = parts.map(p => p.charAt(0).toUpperCase()).join('').substring(0, 3);
+      this.saveLocalData(local);
 
-    try {
-      if (this.isWampConnected$.value) {
-        const res: any = await firstValueFrom(
-          this.http.post(`${this.apiUrl}/update_profile.php`, {
-            phone,
-            name: cleanName,
-          })
-        );
-        return !!(res && res.success);
+      try {
+        if (this.isWampConnected$.value) {
+          const res: any = await firstValueFrom(
+            this.http.post(`${this.apiUrl}/update_profile.php`, {
+              phone,
+              name: cleanName,
+            })
+          );
+          return !!(res && res.success);
+        }
+      } catch (e) {
+        console.warn('Erreur mise à jour profil WAMP :', e);
       }
-    } catch (e) {
-      console.warn('Erreur mise à jour profil WAMP :', e);
     }
     return true;
   }

@@ -7,9 +7,28 @@ try {
     $userId = 1;
 
     if (!empty($phone)) {
+        // Normalize phone for comparison (remove +, spaces, dashes, parentheses)
+        $cleanPhone = preg_replace('/[^0-9]/', '', $phone);
+        
+        // First try exact match
         $stmtUser = $pdo->prepare('SELECT * FROM users WHERE phone = ? LIMIT 1');
         $stmtUser->execute([$phone]);
         $user = $stmtUser->fetch();
+        
+        // If no exact match, try normalized comparison
+        if (!$user) {
+            $stmtUser = $pdo->prepare('SELECT * FROM users WHERE REPLACE(REPLACE(REPLACE(REPLACE(phone, "+", ""), " ", ""), "-", ""), "(", "") = ? LIMIT 1');
+            $stmtUser->execute([$cleanPhone]);
+            $user = $stmtUser->fetch();
+        }
+        
+        // If still no match, try matching against stored normalized phones
+        if (!$user) {
+            $stmtUser = $pdo->prepare('SELECT * FROM users WHERE ? LIKE CONCAT("%", REPLACE(REPLACE(REPLACE(REPLACE(phone, "+", ""), " ", ""), "-", ""), "(", ""), "%") LIMIT 1');
+            $stmtUser->execute([$cleanPhone]);
+            $user = $stmtUser->fetch();
+        }
+        
         if ($user) {
             $userId = (int)$user['id'];
         }

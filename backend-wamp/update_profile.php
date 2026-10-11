@@ -18,7 +18,10 @@ if (empty($name)) {
 }
 
 try {
-    // Calculer les initiales
+    // Normalize phone for comparison
+    $cleanPhone = preg_replace('/[^0-9]/', '', $phone);
+
+    // Calculate initials
     $parts = explode(' ', $name);
     $initials = '';
     foreach ($parts as $p) {
@@ -28,17 +31,24 @@ try {
     }
     $initials = mb_substr($initials, 0, 3);
 
-    // Vérifier si l'utilisateur existe déjà par numéro de téléphone
-    $stmt = $pdo->prepare('SELECT id FROM users WHERE phone = ? LIMIT 1');
-    $stmt->execute([$phone]);
-    $user = $stmt->fetch();
+    // Vérifier si l'utilisateur existe déjà par numéro de téléphone (normalized comparison)
+    $stmt = $pdo->prepare('SELECT id, phone FROM users WHERE id > 0');
+    $allUsers = $stmt->fetchAll();
+    
+    $userId = null;
+    foreach ($allUsers as $u) {
+        $storedClean = preg_replace('/[^0-9]/', '', $u['phone'] ?? '');
+        if ($storedClean === $cleanPhone && !empty($storedClean)) {
+            $userId = (int)$u['id'];
+            break;
+        }
+    }
 
-    if ($user) {
-        $userId = (int)$user['id'];
+    if ($userId) {
         $upd = $pdo->prepare('UPDATE users SET name = ?, initials = ?, verified = 1 WHERE id = ?');
         $upd->execute([$name, $initials, $userId]);
     } else {
-        // Create a new user with this phone number (don't reuse user_id=1)
+        // Créer un nouvel utilisateur avec ce numéro (ne pas réutiliser un autre compte)
         $ins = $pdo->prepare('INSERT INTO users (name, phone, initials, balance, verified) VALUES (?, ?, ?, 0.00, 1)');
         $ins->execute([$name, $phone, $initials]);
         $userId = (int)$pdo->lastInsertId();
