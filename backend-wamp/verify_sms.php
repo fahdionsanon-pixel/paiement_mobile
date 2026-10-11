@@ -21,7 +21,7 @@ if (empty($code)) {
 $cleanPhone = preg_replace('/[^0-9]/', '', $phone);
 
 try {
-    // Vérification locale d'abord (rapide et fiable)
+    // Vérification locale (rapide et fiable)
     $stmt = $pdo->prepare('
         SELECT * FROM sms_otps
         WHERE phone = ? AND verified = 0

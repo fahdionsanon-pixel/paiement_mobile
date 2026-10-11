@@ -68,8 +68,8 @@ testem.log
 # Sensitive configuration files
 backend-wamp/config.php
 backend-wamp/meta_config.php
-backend-wamp/otp_config.php
 backend-wamp/twilio_config.php
+backend-wamp/textbelt_config.php
 src/environments/environment.ts
 src/environments/environment.prod.ts
 
