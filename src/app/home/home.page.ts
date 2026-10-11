@@ -144,7 +144,6 @@ export class HomePage implements OnInit {
   // PIN Security
   userPin = '';
   isPinSetup = false;
-  isPinModalOpen = false;
   pinInput = '';
   pinConfirm = '';
   pinError = '';
