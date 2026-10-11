@@ -5,10 +5,10 @@
   <div *ngIf="showPushNotification && currentOtp" class="mobile-push-banner">
     <div class="push-top-row">
       <div class="push-brand">
-        <div class="push-icon-circle" [class.wa]="channel === 'whatsapp'">
-          <ion-icon [name]="channel === 'whatsapp' ? 'logo-whatsapp' : 'chatbubble-ellipses'"></ion-icon>
+        <div class="push-icon-circle">
+          <ion-icon name="chatbubble-ellipses"></ion-icon>
         </div>
-        <span class="push-app-label">{{ channel === 'whatsapp' ? 'WhatsApp' : 'Messages' }}</span>
+        <span class="push-app-label">Messages</span>
         <span class="push-sep">•</span>
         <span class="push-time">maintenant</span>
       </div>
@@ -58,7 +58,7 @@
           maxlength="6"
           [(ngModel)]="code"
           class="otp-native-input"
-          inputmode="numeric"
+          inputMode="numeric"
           autocomplete="one-time-code"
         />
       </div>

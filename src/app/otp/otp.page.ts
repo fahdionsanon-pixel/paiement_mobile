@@ -16,7 +16,6 @@ export class OtpPage implements OnInit {
   currentOtp = '';
   loading = false;
   isFirebaseActive = false;
-  channel: 'sms' | 'whatsapp' = 'sms';
   showPushNotification = true;
   notificationCopied = false;
 
@@ -32,7 +31,6 @@ export class OtpPage implements OnInit {
     this.phone = this.auth.getPhone();
     this.currentOtp = this.auth.getCurrentOtp();
     this.isFirebaseActive = this.auth.isFirebaseConfigured();
-    this.channel = this.auth.getCurrentChannel();
     this.showPushNotification = true;
   }
 

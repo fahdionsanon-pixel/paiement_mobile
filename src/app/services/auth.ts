@@ -20,10 +20,9 @@ export interface FirebaseConfig {
 
 export interface SendOtpResult {
   success: boolean;
-  method: 'firebase' | 'simulated' | 'whatsapp';
+  method: 'firebase' | 'otp_dev' | 'simulated';
   message: string;
   otp?: string;
-  whatsappLink?: string;
 }
 
 export interface VerifyOtpResult {
@@ -43,8 +42,7 @@ export class Auth {
   private recaptchaVerifier: RecaptchaVerifier | null = null;
   private firebaseApp: FirebaseApp | null = null;
   private firebaseAuth: FirebaseAuth | null = null;
-  private whatsappLink = '';
-  private currentChannel: 'sms' | 'whatsapp' = 'sms';
+  private currentChannel: 'sms' = 'sms';
 
   constructor() {
     // Restore session if available
@@ -112,7 +110,7 @@ export class Auth {
     }
   }
 
-  // Envoi de SMS Classique (Option 2 - Passerelle SMS WAMP sans reCAPTCHA)
+  // Envoi de SMS via otp.dev API (ou fallback local)
   async sendOtp(phoneE164: string): Promise<SendOtpResult> {
     this.phone = phoneE164;
     this.currentChannel = 'sms';
@@ -125,7 +123,7 @@ export class Auth {
 
     const cleanPhone = phoneE164.replace(/\+/g, '').replace(/\s+/g, '');
 
-    // Appel direct au backend SMS WAMP
+    // Appel au backend SMS via otp.dev API
     try {
       const res = await fetch('http://127.0.0.1:8080/send_sms.php', {
         method: 'POST',
@@ -141,83 +139,16 @@ export class Auth {
 
         return {
           success: true,
-          method: 'simulated',
+          method: data.sent_via_otp_dev ? 'otp_dev' : 'simulated',
           otp: this.currentOtp,
           message: data.message || `Code SMS envoyé au ${phoneE164}`,
         };
       }
     } catch (err) {
-      console.warn('WAMP SMS non joignable, fallback local:', err);
+      console.warn('Backend SMS non joignable, fallback local:', err);
     }
 
     return this.triggerSimulatedOtp(phoneE164);
-  }
-
-  // Envoi par WhatsApp (Meta Cloud API ou Direct Link via backend WAMP)
-  async sendWhatsAppOtp(phoneE164: string): Promise<SendOtpResult> {
-    this.phone = phoneE164;
-    this.currentChannel = 'whatsapp';
-    try {
-      sessionStorage.setItem('paypulse_phone', phoneE164);
-      sessionStorage.setItem('paypulse_channel', 'whatsapp');
-    } catch (e) {}
-
-    const cleanPhone = phoneE164.replace(/\+/g, '').replace(/\s+/g, '');
-
-    // Appel à l'API PHP sur WampServer (port 8080 ou 80)
-    try {
-      const res = await fetch('http://127.0.0.1:8080/send_whatsapp_otp.php', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ phone: cleanPhone }),
-      });
-      const data = await res.json();
-
-      if (data && data.success) {
-        this.currentOtp = data.otp || '';
-        this.whatsappLink =
-          data.whatsapp_link ||
-          `https://api.whatsapp.com/send?phone=${cleanPhone}&text=Code%20PayPulse:%20${data.otp}`;
-        try {
-          if (this.currentOtp) sessionStorage.setItem('paypulse_otp', this.currentOtp);
-          sessionStorage.setItem('paypulse_wa_link', this.whatsappLink);
-        } catch (e) {}
-
-        return {
-          success: true,
-          method: 'whatsapp',
-          otp: this.currentOtp,
-          whatsappLink: this.whatsappLink,
-          message: data.message || `Code WhatsApp généré : ${this.currentOtp}`,
-        };
-      }
-    } catch (err) {
-      console.warn('WAMP WhatsApp non joignable, fallback local:', err);
-    }
-
-    // Fallback local instantané
-    this.currentOtp = Math.floor(100000 + Math.random() * 900000).toString();
-    this.whatsappLink = `https://api.whatsapp.com/send?phone=${cleanPhone}&text=%F0%9F%94%90%20%2APayPulse%2A%20%3A%20Votre%20code%20OTP%20est%20%3A%20${this.currentOtp}`;
-    try {
-      sessionStorage.setItem('paypulse_otp', this.currentOtp);
-      sessionStorage.setItem('paypulse_wa_link', this.whatsappLink);
-    } catch (e) {}
-
-    return {
-      success: true,
-      method: 'whatsapp',
-      otp: this.currentOtp,
-      whatsappLink: this.whatsappLink,
-      message: `Code OTP WhatsApp généré : ${this.currentOtp}`,
-    };
-  }
-
-  getWhatsAppLink(): string {
-    return this.whatsappLink || sessionStorage.getItem('paypulse_wa_link') || '';
-  }
-
-  getCurrentChannel(): 'sms' | 'whatsapp' {
-    return (sessionStorage.getItem('paypulse_channel') as any) || this.currentChannel;
   }
 
   private triggerSimulatedOtp(phone: string, reason?: string): SendOtpResult {
@@ -241,30 +172,7 @@ export class Auth {
   async verifyOtp(code: string): Promise<VerifyOtpResult> {
     const trimmed = (code || '').trim();
 
-    // 1. If WhatsApp channel, check with WAMP backend
-    if (this.getCurrentChannel() === 'whatsapp') {
-      try {
-        const cleanPhone = this.getPhone().replace(/\+/g, '').replace(/\s+/g, '');
-        const res = await fetch('http://127.0.0.1:8080/verify_whatsapp_otp.php', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ phone: cleanPhone, code: trimmed }),
-        });
-        const data = await res.json();
-        if (data && data.success) {
-          this.authenticated = true;
-          try {
-            sessionStorage.setItem('paypulse_auth', 'true');
-          } catch (e) {}
-          return {
-            success: true,
-            message: data.message || 'Authentification WhatsApp réussie !',
-          };
-        }
-      } catch (err) {}
-    }
-
-    // 2. If Firebase ConfirmationResult is active, verify via Firebase
+    // 1. If Firebase ConfirmationResult is active, verify via Firebase
     if (this.confirmationResult) {
       try {
         const userCredential = await this.confirmationResult.confirm(trimmed);
@@ -282,7 +190,6 @@ export class Auth {
           };
         }
       } catch (err: any) {
-        // If Firebase verify fails, also check if user typed the demo fallback code
         if (trimmed === '123456') {
           this.authenticated = true;
           try {
@@ -301,7 +208,30 @@ export class Auth {
       }
     }
 
-    // 3. Stored OTP verification (local / fallback)
+    // 2. Vérification via le backend SMS (otp.dev ou local)
+    try {
+      const cleanPhone = this.getPhone().replace(/\+/g, '').replace(/\s+/g, '');
+      const res = await fetch('http://127.0.0.1:8080/verify_sms.php', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ phone: cleanPhone, code: trimmed }),
+      });
+      const data = await res.json();
+      if (data && data.success) {
+        this.authenticated = true;
+        try {
+          sessionStorage.setItem('paypulse_auth', 'true');
+        } catch (e) {}
+        return {
+          success: true,
+          message: data.message || 'Authentification SMS réussie !',
+        };
+      }
+    } catch (err) {
+      console.warn('Backend vérification SMS non joignable:', err);
+    }
+
+    // 3. Fallback local (stockage session)
     const storedOtp = sessionStorage.getItem('paypulse_otp');
     const valid =
       trimmed === this.currentOtp ||

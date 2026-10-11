@@ -81,8 +81,8 @@ CREATE TABLE IF NOT EXISTS `savings_goals` (
   FOREIGN KEY (`user_id`) REFERENCES `users`(`id`) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
--- 6. Table OTPs WhatsApp (pour l'authentification)
-CREATE TABLE IF NOT EXISTS `whatsapp_otps` (
+-- 6. Table OTPs SMS (pour l'authentification)
+CREATE TABLE IF NOT EXISTS `sms_otps` (
   `id` INT AUTO_INCREMENT PRIMARY KEY,
   `phone` VARCHAR(30) NOT NULL,
   `otp` VARCHAR(10) NOT NULL,

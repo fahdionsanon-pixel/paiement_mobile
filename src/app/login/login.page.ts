@@ -90,33 +90,6 @@ export class LoginPage implements OnInit {
     return /^\d{6,15}$/.test(digits);
   }
 
-  async confirmWhatsApp() {
-    if (!this.isValid()) return;
-
-    this.loading = true;
-    const loader = await this.loadingCtrl.create({
-      message: 'Génération du code sécurisé WhatsApp...',
-      spinner: 'crescent',
-    });
-    await loader.present();
-
-    try {
-      const res = await this.auth.sendWhatsAppOtp(this.fullPhone);
-      await loader.dismiss();
-      this.loading = false;
-
-      // Pas de redirection externe : tout en arrière-plan
-      this.router.navigate(['/otp']);
-    } catch (err: any) {
-      await loader.dismiss();
-      this.loading = false;
-      await this.showToast(
-        `Erreur WhatsApp : ${err?.message || 'Impossible d\'envoyer'}`,
-        'danger'
-      );
-    }
-  }
-
   async confirm() {
     if (!this.isValid()) return;
 
