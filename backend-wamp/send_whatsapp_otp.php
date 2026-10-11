@@ -1,6 +1,18 @@
 <?php
 require_once __DIR__ . '/config.php';
 
+// Load Meta configuration if available
+$metaConfig = [];
+$configPath = __DIR__ . '/meta_config.php';
+if (file_exists($configPath)) {
+    require_once $configPath;
+    $metaConfig = [
+        'access_token' => $META_ACCESS_TOKEN ?? '',
+        'phone_id' => $META_PHONE_NUMBER_ID ?? '',
+        'api_version' => $META_API_VERSION ?? 'v18.0',
+    ];
+}
+
 if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
     jsonResponse(['success' => false, 'message' => 'Méthode POST requise'], 405);
 }
@@ -35,9 +47,9 @@ try {
     $sentViaMeta = false;
     $whatsappLink = '';
 
-    // Configuration Meta Business API (à remplir avec vos vrais credentials)
-    $metaAccessToken = ''; // TODO: Ajouter votre Meta Access Token
-    $metaPhoneId = '';     // TODO: Ajouter votre Phone Number ID
+    $metaAccessToken = $metaConfig['access_token'] ?? '';
+    $metaPhoneId = $metaConfig['phone_id'] ?? '';
+    $apiVersion = $metaConfig['api_version'] ?? 'v18.0';
 
     if (!empty($metaAccessToken) && !empty($metaPhoneId)) {
         $messageBody = "Votre code PayPulse est : $otp";
@@ -49,7 +61,7 @@ try {
 
         $ch = curl_init();
         curl_setopt_array($ch, [
-            CURLOPT_URL => "https://graph.facebook.com/v18.0/$metaPhoneId/messages",
+            CURLOPT_URL => "https://graph.facebook.com/$apiVersion/$metaPhoneId/messages",
             CURLOPT_POST => true,
             CURLOPT_POSTFIELDS => json_encode($metaData),
             CURLOPT_HTTPHEADER => [

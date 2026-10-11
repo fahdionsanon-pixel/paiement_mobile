@@ -67,6 +67,7 @@ testem.log
 
 # Sensitive configuration files
 backend-wamp/config.php
+backend-wamp/meta_config.php
 src/environments/environment.ts
 src/environments/environment.prod.ts
 
