@@ -16,14 +16,25 @@ try {
     }
 
     if (!$user) {
-        $userId = isset($_GET['user_id']) ? (int)$_GET['user_id'] : 1;
-        $stmtUser = $pdo->prepare('SELECT * FROM users WHERE id = ?');
-        $stmtUser->execute([$userId]);
-        $user = $stmtUser->fetch();
-    }
-
-    if (!$user) {
-        jsonResponse(['success' => false, 'message' => 'Utilisateur introuvable'], 404);
+        // Phone not found in database - return empty user data instead of falling back to user_id=1
+        // This prevents account data from leaking between users
+        jsonResponse([
+            'success' => true,
+            'user' => [
+                'id' => 0,
+                'name' => '',
+                'phone' => $phone,
+                'initials' => '',
+                'verified' => false,
+                'cashbackBalance' => 0,
+            ],
+            'balanceXOF' => 0,
+            'card' => null,
+            'contacts' => [],
+            'savingsGoal' => null,
+            'transactions' => [],
+            'syncedAt' => date('Y-m-d H:i:s'),
+        ]);
     }
 
     // 2. Carte virtuelle

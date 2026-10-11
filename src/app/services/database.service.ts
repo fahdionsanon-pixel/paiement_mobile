@@ -168,10 +168,12 @@ export class DatabaseService {
         if (res && res.success && res.user) {
           const userName = (res.user.name || '').trim();
           if (userName.length > 0 && userName !== 'Amadou Diallo' && userName !== 'Mon Compte') {
-            // Ne sauvegarder que si le téléphone correspond
-            local.user.name = userName;
-            local.user.phone = phone;
-            this.saveLocalData(local);
+            // Only save if the phone matches (don't overwrite existing user's phone)
+            if (local.user.phone === phone || !local.user.phone) {
+              local.user.name = userName;
+              local.user.phone = phone;
+              this.saveLocalData(local);
+            }
             return { exists: true, hasName: true, name: userName };
           }
         }
@@ -255,7 +257,7 @@ export class DatabaseService {
   }
 
   // 4. Synchronisation bidirectionnelle : Appareil Local <--> WAMP MySQL
-  async syncWithWamp(): Promise<{ success: boolean; data?: LocalAppData; message?: string }> {
+  async syncWithWamp(userPhone?: string): Promise<{ success: boolean; data?: LocalAppData; message?: string }> {
     this.isSyncing$.next(true);
 
     try {
@@ -271,7 +273,7 @@ export class DatabaseService {
       // Récupérer les transactions créées hors-ligne sur l'appareil
       const pendingTxs = this.getPendingSyncTransactions();
       const localData = this.getLocalData();
-      const userPhone = localData.user?.phone || '';
+      const phoneToUse = userPhone || localData.user?.phone || '';
 
       let response: any;
       if (pendingTxs.length > 0) {
@@ -279,15 +281,15 @@ export class DatabaseService {
         response = await firstValueFrom(
           this.http.post(`${this.apiUrl}/sync.php`, {
             user_id: 1,
-            phone: userPhone,
+            phone: phoneToUse,
             pending_transactions: pendingTxs,
           })
         );
         this.clearPendingSyncTransactions();
       } else {
         // Récupérer les données fraîches depuis MySQL en passant le numéro de téléphone
-        const url = userPhone 
-          ? `${this.apiUrl}/get_data.php?phone=${encodeURIComponent(userPhone)}`
+        const url = phoneToUse 
+          ? `${this.apiUrl}/get_data.php?phone=${encodeURIComponent(phoneToUse)}`
           : `${this.apiUrl}/get_data.php?user_id=1`;
         response = await firstValueFrom(
           this.http.get(url)
@@ -306,6 +308,12 @@ export class DatabaseService {
           } else {
             syncedUser.name = '';
             syncedUser.initials = '';
+          }
+          // Always use the phone we queried with (not WAMP user's phone)
+          if (phoneToUse) {
+            syncedUser.phone = phoneToUse;
+          } else if (localData.user && localData.user.phone) {
+            syncedUser.phone = localData.user.phone;
           }
         }
 
@@ -379,13 +387,16 @@ export class DatabaseService {
     localData.transactions.unshift(newTx);
     this.saveLocalData(localData);
 
-    // 2. Synchronisation WAMP en arrière-plan
+// 2. Synchronisation WAMP en arrière-plan
     let synced = false;
     try {
       if (this.isWampConnected$.value) {
+        const localData = this.getLocalData();
+        const userPhone = localData.user?.phone || '';
         const res: any = await firstValueFrom(
           this.http.post(`${this.apiUrl}/send_money.php`, {
             user_id: 1,
+            phone: userPhone,
             recipient_name: recipientName,
             recipient_phone: recipientPhone,
             amount: amount,
@@ -445,9 +456,12 @@ export class DatabaseService {
     let synced = false;
     try {
       if (this.isWampConnected$.value) {
+        const localData = this.getLocalData();
+        const userPhone = localData.user?.phone || '';
         const res: any = await firstValueFrom(
           this.http.post(`${this.apiUrl}/top_up.php`, {
             user_id: 1,
+            phone: userPhone,
             amount: amount,
             method: method,
           })

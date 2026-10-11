@@ -6,6 +6,16 @@ $input = getJsonInput();
   $pendingTransactions = $input['pending_transactions'] ?? [];
   $phone = $input['phone'] ?? '';
 
+  // Find the correct user ID from the phone number
+  if (!empty($phone)) {
+      $stmtFindUser = $pdo->prepare('SELECT id FROM users WHERE phone = ? LIMIT 1');
+      $stmtFindUser->execute([$phone]);
+      $foundUser = $stmtFindUser->fetch();
+      if ($foundUser) {
+          $userId = (int)$foundUser['id'];
+      }
+  }
+
 try {
     $pdo->beginTransaction();
 

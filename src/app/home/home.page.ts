@@ -226,7 +226,8 @@ export class HomePage implements OnInit {
       this.isSyncing = syncing;
     });
 
-    await this.syncDatabase();
+    // Sync with the authenticated phone number (not from local data which may be empty)
+    await this.syncDatabase(authPhone);
   }
 
   openProfile() {
@@ -266,9 +267,9 @@ export class HomePage implements OnInit {
     this.lastSyncTime = local.syncedAt || 'Mode local';
   }
 
-  async syncDatabase(showFeedback = false) {
-    const authPhone = this.auth.getPhone();
-    const res = await this.dbService.syncWithWamp();
+  async syncDatabase(showFeedback = false, authPhone?: string) {
+    const phoneToUse = authPhone || this.auth.getPhone();
+    const res = await this.dbService.syncWithWamp(phoneToUse);
     if (res.success && res.data) {
       // Only update balance and transactions from WAMP
       // Preserve the current user's phone and name (don't overwrite with WAMP user_id=1 data)
@@ -283,8 +284,8 @@ export class HomePage implements OnInit {
         this.user.initials = savedProfile.user.initials;
       }
       // Always use the authenticated phone, not WAMP data
-      if (authPhone) {
-        this.user.phone = authPhone;
+      if (phoneToUse) {
+        this.user.phone = phoneToUse;
       }
       if (showFeedback) {
         this.showToast('✅ Données synchronisées avec la base WAMP MySQL !', 'success');
