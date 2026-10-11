@@ -63,6 +63,18 @@
       </button>
     </div>
 
+    <!-- Secondary Action Buttons -->
+    <div class="wave-secondary-actions">
+      <button class="wave-secondary-btn" (click)="handleQuickAction('withdraw')" id="btn-retrait">
+        <ion-icon name="arrow-up-circle-outline"></ion-icon>
+        <span>Retrait</span>
+      </button>
+      <button class="wave-secondary-btn" (click)="handleQuickAction('favorites')" id="btn-favoris">
+        <ion-icon name="star-outline"></ion-icon>
+        <span>Favoris</span>
+      </button>
+    </div>
+
     <!-- ===== CARTE CODE QR DU COMPTE (Wave Style) ===== -->
     <div class="wave-account-qr-card">
       <div class="wave-account-qr-header">
@@ -121,13 +133,28 @@
         <span class="wave-tx-count" *ngIf="transactions.length > 0">{{ transactions.length }}</span>
       </div>
 
+      <!-- Search & Filters -->
+      <div class="wave-tx-filters">
+        <div class="wave-search-box">
+          <ion-icon name="search-outline"></ion-icon>
+          <input type="text" placeholder="Rechercher..." [(ngModel)]="searchQuery" />
+        </div>
+        <div class="wave-filter-tabs">
+          <button class="wave-filter-tab" [class.active]="transactionFilter === 'all'" (click)="transactionFilter = 'all'">Tous</button>
+          <button class="wave-filter-tab" [class.active]="transactionFilter === 'credit'" (click)="transactionFilter = 'credit'">Entrées</button>
+          <button class="wave-filter-tab" [class.active]="transactionFilter === 'debit'" (click)="transactionFilter = 'debit'">Sorties</button>
+        </div>
+      </div>
+
       <!-- Empty State (Nouveau compte) -->
-      <div class="wave-empty-state" *ngIf="transactions.length === 0">
+      <div class="wave-empty-state" *ngIf="filteredTransactions.length === 0">
         <div class="wave-empty-icon">
           <ion-icon name="swap-horizontal-outline"></ion-icon>
         </div>
-        <h4 class="wave-empty-title">Aucune transaction</h4>
-        <p class="wave-empty-sub">Vos transactions apparaîtront ici dès que vous enverrez ou recevrez de l'argent.</p>
+        <h4 class="wave-empty-title" *ngIf="transactions.length === 0">Aucune transaction</h4>
+        <h4 class="wave-empty-title" *ngIf="transactions.length > 0">Aucun résultat</h4>
+        <p class="wave-empty-sub" *ngIf="transactions.length === 0">Vos transactions apparaîtront ici dès que vous enverrez ou recevrez de l'argent.</p>
+        <p class="wave-empty-sub" *ngIf="transactions.length > 0">Aucune transaction ne correspond à vos filtres.</p>
         <button class="wave-empty-cta" (click)="handleQuickAction('send')" id="btn-first-send">
           <ion-icon name="paper-plane-outline"></ion-icon>
           Envoyer de l'argent
@@ -135,10 +162,10 @@
       </div>
 
       <!-- Transactions List (when not empty) -->
-      <div class="wave-tx-list" *ngIf="transactions.length > 0">
+      <div class="wave-tx-list" *ngIf="filteredTransactions.length > 0">
         <div
           class="wave-tx-item"
-          *ngFor="let tx of transactions"
+          *ngFor="let tx of filteredTransactions"
           (click)="viewTransactionDetails(tx)"
         >
           <div class="wave-tx-icon" [style.background]="tx.iconBg" [style.color]="tx.iconColor">
@@ -502,6 +529,154 @@
         <button class="wave-confirm-btn mt-3" (click)="markNotificationsAsRead()">
           Tout marquer comme lu
         </button>
+      </ion-content>
+    </ng-template>
+  </ion-modal>
+
+  <!-- ===== MODAL: RETRAIT ===== -->
+  <ion-modal [isOpen]="isWithdrawModalOpen" (didDismiss)="isWithdrawModalOpen = false">
+    <ng-template>
+      <ion-header>
+        <ion-toolbar class="wave-modal-toolbar">
+          <ion-title>Retrait d'argent</ion-title>
+          <ion-buttons slot="end">
+            <ion-button (click)="isWithdrawModalOpen = false">
+              <ion-icon name="close-outline"></ion-icon>
+            </ion-button>
+          </ion-buttons>
+        </ion-toolbar>
+      </ion-header>
+      <ion-content class="wave-modal-content ion-padding">
+        <div class="wave-modal-body">
+          <div class="wave-form-group">
+            <label class="wave-label">Méthode de retrait</label>
+            <div class="wave-method-grid">
+              <div class="wave-method" [class.selected]="withdrawalForm.method === 'mobile_money'" (click)="withdrawalForm.method = 'mobile_money'">
+                <ion-icon name="phone-portrait-outline"></ion-icon>
+                <span>Mobile Money</span>
+              </div>
+              <div class="wave-method" [class.selected]="withdrawalForm.method === 'bank_transfer'" (click)="withdrawalForm.method = 'bank_transfer'">
+                <ion-icon name="bank-outline"></ion-icon>
+                <span>Virement Bancaire</span>
+              </div>
+              <div class="wave-method" [class.selected]="withdrawalForm.method === 'airtime'" (click)="withdrawalForm.method = 'airtime'">
+                <ion-icon name="call-outline"></ion-icon>
+                <span>Crédit Téléphonique</span>
+              </div>
+            </div>
+          </div>
+
+          <div class="wave-form-group">
+            <label class="wave-label">Numéro de destination *</label>
+            <div class="wave-input-box">
+              <ion-icon name="phone-portrait-outline"></ion-icon>
+              <input type="tel" placeholder="Ex: +226 70 00 00 00" [(ngModel)]="withdrawalForm.recipientPhone" />
+            </div>
+          </div>
+
+          <div class="wave-form-group">
+            <label class="wave-label">Montant (FCFA) *</label>
+            <div class="wave-input-box wave-amount-box">
+              <span class="wave-currency">XOF</span>
+              <input type="number" placeholder="0" [(ngModel)]="withdrawalForm.amount" min="500" />
+            </div>
+            <span class="wave-balance-hint">Solde disponible : {{ formattedBalance }}</span>
+          </div>
+
+          <div class="wave-form-group">
+            <label class="wave-label">Motif (optionnel)</label>
+            <div class="wave-input-box">
+              <ion-icon name="chatbox-ellipses-outline"></ion-icon>
+              <input type="text" placeholder="Ex: Retrait..." [(ngModel)]="withdrawalForm.note" />
+            </div>
+          </div>
+
+          <button class="wave-confirm-btn" [disabled]="!withdrawalForm.amount || !withdrawalForm.recipientPhone" (click)="confirmWithdrawal()">
+            <ion-icon name="arrow-up-circle"></ion-icon>
+            Confirmer le retrait
+          </button>
+        </div>
+      </ion-content>
+    </ng-template>
+  </ion-modal>
+
+  <!-- ===== MODAL: PIN SECURITY ===== -->
+  <ion-modal [isOpen]="isPinModalOpen" (didDismiss)="isPinModalOpen = false">
+    <ng-template>
+      <ion-header>
+        <ion-toolbar class="wave-modal-toolbar">
+          <ion-title *ngIf="!isPinSetup">Définir un PIN</ion-title>
+          <ion-title *ngIf="isPinSetup">Modifier le PIN</ion-title>
+          <ion-buttons slot="end">
+            <ion-button (click)="isPinModalOpen = false">
+              <ion-icon name="close-outline"></ion-icon>
+            </ion-button>
+          </ion-buttons>
+        </ion-toolbar>
+      </ion-header>
+      <ion-content class="wave-modal-content ion-padding">
+        <div class="wave-modal-body">
+          <div class="wave-pin-box">
+            <div class="wave-pin-icon">
+              <ion-icon name="lock-outline"></ion-icon>
+            </div>
+            <p class="wave-pin-title">Définissez un code PIN à 4 chiffres</p>
+            <p class="wave-pin-sub">Ce code sera utilisé pour authentifier vos transactions</p>
+
+            <div class="wave-pin-inputs">
+              <input type="password" maxlength="1" [(ngModel)]="pinInput" placeholder="•" />
+              <input type="password" maxlength="1" [(ngModel)]="pinConfirm" placeholder="•" />
+            </div>
+
+            <p class="wave-pin-error" *ngIf="pinError">{{ pinError }}</p>
+
+            <button class="wave-confirm-btn" (click)="confirmPinSetup()">
+              <ion-icon name="checkmark-circle"></ion-icon>
+              Enregistrer le PIN
+            </button>
+          </div>
+        </div>
+      </ion-content>
+    </ng-template>
+  </ion-modal>
+
+  <!-- ===== MODAL: FAVORIS ===== -->
+  <ion-modal [isOpen]="isFavoritesModalOpen" (didDismiss)="isFavoritesModalOpen = false">
+    <ng-template>
+      <ion-header>
+        <ion-toolbar class="wave-modal-toolbar">
+          <ion-title>Favoris</ion-title>
+          <ion-buttons slot="end">
+            <ion-button (click)="isFavoritesModalOpen = false">
+              <ion-icon name="close-outline"></ion-icon>
+            </ion-button>
+          </ion-buttons>
+        </ion-toolbar>
+      </ion-header>
+      <ion-content class="wave-modal-content ion-padding">
+        <div class="wave-modal-body">
+          <p class="wave-fav-hint">Appuyez sur les transactions récentes pour les ajouter aux favoris.</p>
+
+          <div class="wave-fav-list" *ngIf="favorites.length > 0">
+            <div class="wave-fav-item" *ngFor="let fav of favorites">
+              <div class="wave-fav-avatar">
+                <ion-icon name="person-outline"></ion-icon>
+              </div>
+              <div class="wave-fav-info">
+                <span class="wave-fav-name">{{ fav.name || 'Contact' }}</span>
+                <span class="wave-fav-phone">{{ fav.phone }}</span>
+              </div>
+              <button class="wave-fav-remove" (click)="toggleFavorite(fav)">
+                <ion-icon name="trash-outline"></ion-icon>
+              </button>
+            </div>
+          </div>
+
+          <div class="wave-empty-state" *ngIf="favorites.length === 0">
+            <div class="wave-empty-icon"><ion-icon name="star-outline"></ion-icon></div>
+            <p class="wave-empty-sub">Aucun favoris pour le moment.</p>
+          </div>
+        </div>
       </ion-content>
     </ng-template>
   </ion-modal>

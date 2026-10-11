@@ -86,6 +86,9 @@ export class HomePage implements OnInit {
   isTxDetailsModalOpen = false;
   isNotificationsModalOpen = false;
   isServicesModalOpen = false;
+  isWithdrawModalOpen = false;
+  isPinModalOpen = false;
+  isFavoritesModalOpen = false;
 
   // QR Code du compte
   myQrCodeDataUrl = '';
@@ -120,8 +123,34 @@ export class HomePage implements OnInit {
   // Scanner state
   scanActiveTab: 'scan' | 'my_qr' = 'scan';
 
-  // Quick preset amounts for transfers (unused - kept for reference)
+  // Quick preset amounts for transfers
   presetAmounts = [5000, 10000, 25000, 50000, 100000];
+
+  // Withdrawal form
+  withdrawalForm = {
+    method: 'mobile_money',
+    recipientPhone: '',
+    amount: null as number | null,
+    note: '',
+  };
+
+  // Withdrawal methods
+  withdrawalMethods = [
+    { id: 'mobile_money', name: 'Mobile Money', icon: 'phone-portrait-outline', color: '#f59e0b' },
+    { id: 'bank_transfer', name: 'Virement Bancaire', icon: 'bank-outline', color: '#1D4ED8' },
+    { id: 'airtime', name: 'Crédit Téléphonique', icon: 'call-outline', color: '#10b981' },
+  ];
+
+  // PIN Security
+  userPin = '';
+  isPinSetup = false;
+  isPinModalOpen = false;
+  pinInput = '';
+  pinConfirm = '';
+  pinError = '';
+
+  // Favorites / Quick Contacts
+  favorites: QuickContact[] = [];
 
   // Quick contacts — vide pour un nouveau compte
   quickContacts: QuickContact[] = [];
@@ -180,6 +209,10 @@ export class HomePage implements OnInit {
 
     // Charger les données locales SEULEMENT si elles appartiennent à ce compte
     this.loadFromLocalDevice(authPhone);
+
+    // Charger le statut PIN et les favoris
+    this.loadPinStatus();
+    this.loadFavorites();
 
     // Générer le QR Code dynamique du compte
     await this.generateMyQrCode();
@@ -355,6 +388,9 @@ export class HomePage implements OnInit {
       case 'topup':
         this.isTopUpModalOpen = true;
         break;
+      case 'withdraw':
+        this.openWithdrawModal();
+        break;
       case 'bills':
       case 'airtime':
       case 'services':
@@ -362,6 +398,9 @@ export class HomePage implements OnInit {
         break;
       case 'vault':
         this.showToast('Coffre d’épargne sécurisé à 4.5% d’intérêt annuel.', 'primary');
+        break;
+      case 'favorites':
+        this.isFavoritesModalOpen = true;
         break;
       default:
         this.isServicesModalOpen = true;
@@ -699,6 +738,150 @@ export class HomePage implements OnInit {
     } else if (tab === 'profile') {
       this.showToast(`Connecté : ${this.user.phone || 'Numéro inconnu'}`, 'secondary');
     }
+  }
+
+  // ===== WITHDRAWAL =====
+  openWithdrawModal() {
+    this.isWithdrawModalOpen = true;
+  }
+
+  async confirmWithdrawal() {
+    if (!this.withdrawalForm.amount || this.withdrawalForm.amount <= 0) {
+      this.showToast('Veuillez saisir un montant valide.', 'danger');
+      return;
+    }
+    if (!this.withdrawalForm.recipientPhone) {
+      this.showToast('Veuillez saisir le numéro de destination.', 'danger');
+      return;
+    }
+    if (this.withdrawalForm.amount > this.balanceXOF) {
+      this.showToast('Solde insuffisant pour ce retrait.', 'danger');
+      return;
+    }
+
+    // Request PIN authorization
+    if (!this.isPinSetup) {
+      this.isWithdrawModalOpen = false;
+      this.openPinSetup();
+      return;
+    }
+
+    this.isWithdrawModalOpen = false;
+
+    const amountVal = Number(this.withdrawalForm.amount);
+    const methodLabel = this.withdrawalMethods.find(m => m.id === this.withdrawalForm.method)?.name || 'Retrait';
+
+    // Deduct balance
+    this.balanceXOF -= amountVal;
+    this.monthlyExpense += amountVal;
+
+    const txRef = 'WD-' + Math.floor(100000 + Math.random() * 900000);
+    const dateLabel = 'À l’instant';
+    const timeLabel = new Date().toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' });
+
+    const newTx: Transaction = {
+      id: txRef,
+      title: `Retrait ${methodLabel}`,
+      subtitle: this.withdrawalForm.note || `Vers ${this.withdrawalForm.recipientPhone}`,
+      category: 'withdraw',
+      categoryLabel: 'Retrait',
+      icon: 'arrow-up',
+      iconBg: 'rgba(239, 68, 68, 0.15)',
+      iconColor: '#ef4444',
+      amount: amountVal,
+      type: 'debit',
+      date: dateLabel,
+      time: timeLabel,
+      status: 'completed',
+      reference: txRef,
+      fees: 0,
+    };
+
+    this.transactions.unshift(newTx);
+
+    // Reset form
+    this.withdrawalForm = {
+      method: 'mobile_money',
+      recipientPhone: '',
+      amount: null,
+      note: '',
+    };
+
+    await this.showToast(`✅ Retrait de ${this.formatAmount(amountVal)} effectué !`, 'success');
+  }
+
+  // ===== PIN SECURITY =====
+  loadPinStatus() {
+    try {
+      const savedPin = localStorage.getItem('paypulse_pin');
+      if (savedPin) {
+        this.userPin = savedPin;
+        this.isPinSetup = true;
+      }
+    } catch (e) {}
+  }
+
+  openPinSetup() {
+    this.pinInput = '';
+    this.pinConfirm = '';
+    this.pinError = '';
+    this.isPinModalOpen = true;
+  }
+
+  confirmPinSetup() {
+    if (this.pinInput.length !== 4 || !/^\d{4}$/.test(this.pinInput)) {
+      this.pinError = 'Le PIN doit être à 4 chiffres.';
+      return;
+    }
+    if (this.pinInput !== this.pinConfirm) {
+      this.pinError = 'Les codes ne correspondent pas.';
+      return;
+    }
+    try {
+      localStorage.setItem('paypulse_pin', this.pinInput);
+      this.userPin = this.pinInput;
+      this.isPinSetup = true;
+      this.isPinModalOpen = false;
+      this.showToast('PIN enregistré avec succès !', 'success');
+    } catch (e) {
+      this.pinError = 'Impossible d\'enregistrer le PIN.';
+    }
+  }
+
+  verifyPin(pin: string): boolean {
+    return pin === this.userPin;
+  }
+
+  // ===== FAVORITES =====
+  toggleFavorite(contact: QuickContact) {
+    const idx = this.favorites.findIndex(f => f.phone === contact.phone);
+    if (idx >= 0) {
+      this.favorites.splice(idx, 1);
+      this.showToast('Contact retiré des favoris', 'warning');
+    } else {
+      this.favorites.push({ ...contact });
+      this.showToast('Contact ajouté aux favoris !', 'success');
+    }
+    this.saveFavorites();
+  }
+
+  isFavorite(phone: string): boolean {
+    return this.favorites.some(f => f.phone === phone);
+  }
+
+  saveFavorites() {
+    try {
+      localStorage.setItem('paypulse_favorites', JSON.stringify(this.favorites));
+    } catch (e) {}
+  }
+
+  loadFavorites() {
+    try {
+      const saved = localStorage.getItem('paypulse_favorites');
+      if (saved) {
+        this.favorites = JSON.parse(saved);
+      }
+    } catch (e) {}
   }
 
   // Logout
