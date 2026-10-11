@@ -1,16 +1,6 @@
 <?php
 require_once __DIR__ . '/config.php';
 
-// Load otp.dev configuration if available
-$otpConfig = [];
-$configPath = __DIR__ . '/otp_config.php';
-if (file_exists($configPath)) {
-    require_once $configPath;
-    $otpConfig = [
-        'api_key' => $OTP_API_KEY ?? '',
-    ];
-}
-
 if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
     jsonResponse(['success' => false, 'message' => 'Méthode POST requise'], 405);
 }
@@ -55,32 +45,6 @@ try {
             $upd = $pdo->prepare('UPDATE sms_otps SET verified = 1 WHERE id = ?');
             $upd->execute([$otpRecord['id']]);
             $verified = true;
-        }
-    }
-
-    // Si la vérification locale échoue, vérifier via otp.dev API
-    if (!$verified && !empty($otpConfig['api_key'])) {
-        $ch = curl_init();
-        $url = 'https://api.otp.dev/v1/verifications?code=' . urlencode($code) . '&phone=' . urlencode($cleanPhone);
-        curl_setopt_array($ch, [
-            CURLOPT_URL => $url,
-            CURLOPT_HTTPHEADER => [
-                'X-OTP-Key: ' . $otpConfig['api_key'],
-                'accept: application/json',
-            ],
-            CURLOPT_RETURNTRANSFER => true,
-            CURLOPT_TIMEOUT => 30,
-        ]);
-        $response = curl_exec($ch);
-        $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
-        $curlError = curl_error($ch);
-        curl_close($ch);
-
-        if ($httpCode === 200 && !$curlError) {
-            $data = json_decode($response, true);
-            if ($data && isset($data['data']) && count($data['data']) > 0) {
-                $verified = true;
-            }
         }
     }
 

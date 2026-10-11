@@ -1,15 +1,15 @@
 <?php
 require_once __DIR__ . '/config.php';
 
-// Load otp.dev configuration if available
-$otpConfig = [];
-$configPath = __DIR__ . '/otp_config.php';
+// Load Twilio configuration if available
+$twilioConfig = [];
+$configPath = __DIR__ . '/twilio_config.php';
 if (file_exists($configPath)) {
     require_once $configPath;
-    $otpConfig = [
-        'api_key' => $OTP_API_KEY ?? '',
-        'template_id' => $OTP_TEMPLATE_ID ?? '',
-        'sender' => $OTP_SENDER ?? 'PayPulse',
+    $twilioConfig = [
+        'account_sid' => $TWILIO_ACCOUNT_SID ?? '',
+        'auth_token' => $TWILIO_AUTH_TOKEN ?? '',
+        'from_number' => $TWILIO_FROM_NUMBER ?? '',
     ];
 }
 
@@ -43,30 +43,32 @@ try {
     ');
     $insStmt->execute([$cleanPhone, $otp, $expiresAt]);
 
-    // Tentative d'envoi via otp.dev API (si configuré)
-    $sentViaOtpDev = false;
-    $apiApiKey = $otpConfig['api_key'] ?? '';
-    $apiTemplateId = $otpConfig['template_id'] ?? '';
-    $apiSender = $otpConfig['sender'] ?? 'PayPulse';
+    // Tentative d'envoi via Twilio API (si configuré)
+    $sentViaTwilio = false;
+    $accountSid = $twilioConfig['account_sid'] ?? '';
+    $authToken = $twilioConfig['auth_token'] ?? '';
+    $fromNumber = $twilioConfig['from_number'] ?? '';
 
-    if (!empty($apiApiKey) && !empty($apiTemplateId)) {
-        $otpData = [
-            'channel' => 'sms',
-            'sender' => $apiSender,
-            'phone' => $cleanPhone,
-            'template' => $apiTemplateId,
-            'code_length' => 6,
+    if (!empty($accountSid) && !empty($authToken) && !empty($fromNumber)) {
+        $messageBody = "Votre code PayPulse est : $otp";
+        
+        // Twilio API endpoint
+        $twilioUrl = "https://api.twilio.com/2010-04-01/Accounts/$accountSid/Messages.json";
+        
+        $postFields = [
+            'To' => '+' . $cleanPhone,
+            'From' => $fromNumber,
+            'Body' => $messageBody,
         ];
 
         $ch = curl_init();
         curl_setopt_array($ch, [
-            CURLOPT_URL => 'https://api.otp.dev/v1/verifications',
+            CURLOPT_URL => $twilioUrl,
             CURLOPT_POST => true,
-            CURLOPT_POSTFIELDS => json_encode(['data' => $otpData]),
+            CURLOPT_POSTFIELDS => http_build_query($postFields),
+            CURLOPT_USERPWD => "$accountSid:$authToken",
             CURLOPT_HTTPHEADER => [
-                'X-OTP-Key: ' . $apiApiKey,
-                'accept: application/json',
-                'content-type: application/json',
+                'Content-Type: application/x-www-form-urlencoded',
             ],
             CURLOPT_RETURNTRANSFER => true,
             CURLOPT_TIMEOUT => 30,
@@ -78,7 +80,7 @@ try {
         curl_close($ch);
 
         if ($httpCode >= 200 && $httpCode < 300 && !$curlError) {
-            $sentViaOtpDev = true;
+            $sentViaTwilio = true;
         }
     }
 
@@ -87,11 +89,11 @@ try {
         'otp' => $otp,
         'phone' => $cleanPhone,
         'expires_at' => $expiresAt,
-        'sent_via_otp_dev' => $sentViaOtpDev,
-        'message' => $sentViaOtpDev
-            ? "Code OTP envoyé par SMS via otp.dev"
-            : "Code OTP généré localement. SMS non envoyé (otp.dev non configuré).",
-        'method' => $sentViaOtpDev ? 'otp_dev_sms' : 'local'
+        'sent_via_twilio' => $sentViaTwilio,
+        'message' => $sentViaTwilio
+            ? "Code OTP envoyé par SMS via Twilio"
+            : "Code OTP généré localement. SMS non envoyé (Twilio non configuré).",
+        'method' => $sentViaTwilio ? 'twilio_sms' : 'local'
     ]);
 
 } catch (Exception $e) {
