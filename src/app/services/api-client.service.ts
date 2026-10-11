@@ -96,17 +96,17 @@ export class ApiClientService {
       if (body) {
         options.params = new HttpParams({ ...body });
       }
-      const res = await firstValueFrom(this.http.get<T>(url, options));
-      return res;
+      const res = await firstValueFrom(this.http.get<any>(url, options));
+      return res as T;
     } else if (method === 'POST') {
-      const res = await firstValueFrom(this.http.post<T>(url, body, options));
-      return res;
+      const res = await firstValueFrom(this.http.post<any>(url, body, options));
+      return res as T;
     } else if (method === 'PUT') {
-      const res = await firstValueFrom(this.http.put<T>(url, body, options));
-      return res;
+      const res = await firstValueFrom(this.http.put<any>(url, body, options));
+      return res as T;
     } else if (method === 'DELETE') {
-      const res = await firstValueFrom(this.http.delete<T>(url, options));
-      return res;
+      const res = await firstValueFrom(this.http.delete<any>(url, options));
+      return res as T;
     }
 
     throw new Error('Méthode non supportée');

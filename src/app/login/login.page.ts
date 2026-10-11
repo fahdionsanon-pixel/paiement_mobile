@@ -1,11 +1,7 @@
-// Login Page - Uses Node.js API backend
-// Flow: Phone -> OTP -> PIN -> Session
-
 import { Component, OnInit } from '@angular/core';
 import { Router } from '@angular/router';
 import { ToastController, LoadingController } from '@ionic/angular';
-import { AuthService } from '../services/auth-new.service';
-import { ApiClientService } from '../services/api-client.service';
+import { Auth, FirebaseConfig } from '../services/auth';
 
 @Component({
   selector: 'app-login',
@@ -17,8 +13,8 @@ export class LoginPage implements OnInit {
   selectedCountry = '+226';
   phone = '';
   loading = false;
-  apiConnected = false;
-  apiBaseUrl = 'http://localhost:3000';
+  showConfigModal = false;
+  isFirebaseActive = false;
 
   countries = [
     { code: '+226', flag: '🇧🇫', name: 'Burkina Faso' },
@@ -31,30 +27,58 @@ export class LoginPage implements OnInit {
     { code: '+1', flag: '🇺🇸', name: 'USA / Canada' },
   ];
 
+  fbConfig: FirebaseConfig = {
+    apiKey: '',
+    authDomain: '',
+    projectId: '',
+    storageBucket: '',
+    messagingSenderId: '',
+    appId: '',
+  };
+
   constructor(
-    private auth: AuthService,
-    private api: ApiClientService,
+    private auth: Auth,
     private router: Router,
     private toastCtrl: ToastController,
     private loadingCtrl: LoadingController
   ) {}
 
-  async ngOnInit() {
-    this.apiBaseUrl = this.api.getConfig().baseUrl;
-    await this.checkApiConnection();
+  ngOnInit() {
+    this.refreshFirebaseStatus();
   }
 
-  async checkApiConnection() {
-    try {
-      const res = await this.api.healthCheck();
-      this.apiConnected = res.status === 'ok';
-    } catch (err) {
-      this.apiConnected = false;
+  refreshFirebaseStatus() {
+    this.isFirebaseActive = this.auth.isFirebaseConfigured();
+    const current = this.auth.getFirebaseConfig();
+    if (current) {
+      this.fbConfig = { ...current };
     }
+  }
+
+  openConfigModal() {
+    this.refreshFirebaseStatus();
+    this.showConfigModal = true;
+  }
+
+  closeConfigModal() {
+    this.showConfigModal = false;
+  }
+
+  saveConfig() {
+    this.auth.saveFirebaseConfig(this.fbConfig);
+    this.refreshFirebaseStatus();
+    this.showConfigModal = false;
+    this.showToast(
+      this.isFirebaseActive
+        ? 'Configuration Firebase enregistrée avec succès !'
+        : 'Configuration enregistrée (mode simulation actif si clés partielles).',
+      'success'
+    );
   }
 
   get fullPhone(): string {
     let digits = (this.phone || '').replace(/\s+/g, '').replace(/[-().]/g, '');
+    // Remove leading zero if entered in international mode (e.g. 06 12 34 -> 6 12 34 for +33)
     if (this.selectedCountry !== '+1' && digits.startsWith('0')) {
       digits = digits.substring(1);
     }
@@ -71,7 +95,7 @@ export class LoginPage implements OnInit {
 
     this.loading = true;
     const loader = await this.loadingCtrl.create({
-      message: 'Envoi du code OTP...',
+      message: 'Envoi du code par SMS...',
       spinner: 'crescent',
     });
     await loader.present();
@@ -81,25 +105,27 @@ export class LoginPage implements OnInit {
       await loader.dismiss();
       this.loading = false;
 
-      if (res.success) {
-        this.showToast(`OTP généré : ${res.otp || 'Voir console'}`, 'success', 5000);
-        // Navigate to OTP page
-        this.router.navigate(['/otp'], {
-          state: { phone: this.fullPhone, otp: res.otp }
-        });
-      } else {
-        this.showToast(res.message, 'danger');
-      }
+      await this.showToast(
+        `Code SMS généré pour le ${this.fullPhone} : ${res.otp}`,
+        'success',
+        8000
+      );
+
+      this.router.navigate(['/otp']);
     } catch (err: any) {
       await loader.dismiss();
       this.loading = false;
-      this.showToast(err?.message || 'Connexion échouée', 'danger');
+      await this.showToast(
+        `Erreur : ${err?.message || "Impossible d'envoyer le SMS"}`,
+        'danger',
+        6000
+      );
     }
   }
 
-  updateApiUrl() {
-    this.api.setConfig({ baseUrl: this.apiBaseUrl });
-    this.checkApiConnection();
+  directAccess() {
+    this.auth.loginDirect();
+    this.router.navigate(['/home']);
   }
 
   private async showToast(message: string, color: string, duration = 4000) {
