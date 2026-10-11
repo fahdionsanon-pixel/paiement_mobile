@@ -53,9 +53,18 @@ try {
     if (!empty($phone)) {
         $_GET['phone'] = $phone;
     } else {
-        $_GET['user_id'] = $userId;
+        // No phone provided - return empty data instead of user_id=1 to prevent data leaks
+        jsonResponse([
+            'success' => true,
+            'user' => ['id' => 0, 'name' => '', 'phone' => '', 'initials' => '', 'verified' => false, 'cashbackBalance' => 0],
+            'balanceXOF' => 0,
+            'card' => null,
+            'contacts' => [],
+            'savingsGoal' => null,
+            'transactions' => [],
+            'syncedAt' => date('Y-m-d H:i:s'),
+        ]);
     }
-    require __DIR__ . '/get_data.php';
 
 } catch (Exception $e) {
     if ($pdo->inTransaction()) {

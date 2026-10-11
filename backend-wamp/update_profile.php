@@ -38,21 +38,10 @@ try {
         $upd = $pdo->prepare('UPDATE users SET name = ?, initials = ?, verified = 1 WHERE id = ?');
         $upd->execute([$name, $initials, $userId]);
     } else {
-        // Vérifier si user 1 est disponible (soit sans numéro, soit avec le même)
-        $stmt1 = $pdo->prepare('SELECT id, phone, name FROM users WHERE id = 1');
-        $stmt1->execute();
-        $user1 = $stmt1->fetch();
-
-        if ($user1 && (empty($user1['phone']) || $user1['phone'] === $phone)) {
-            $userId = 1;
-            $upd = $pdo->prepare('UPDATE users SET name = ?, phone = ?, initials = ?, verified = 1 WHERE id = 1');
-            $upd->execute([$name, $phone, $initials]);
-        } else {
-            // Créer un nouvel utilisateur dans la base
-            $ins = $pdo->prepare('INSERT INTO users (name, phone, initials, balance, verified) VALUES (?, ?, ?, 0.00, 1)');
-            $ins->execute([$name, $phone, $initials]);
-            $userId = (int)$pdo->lastInsertId();
-        }
+        // Create a new user with this phone number (don't reuse user_id=1)
+        $ins = $pdo->prepare('INSERT INTO users (name, phone, initials, balance, verified) VALUES (?, ?, ?, 0.00, 1)');
+        $ins->execute([$name, $phone, $initials]);
+        $userId = (int)$pdo->lastInsertId();
     }
 
     jsonResponse([

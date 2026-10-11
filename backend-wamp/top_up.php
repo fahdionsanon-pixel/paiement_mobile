@@ -6,9 +6,22 @@ if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
 }
 
 $input = getJsonInput();
-$userId = isset($input['user_id']) ? (int)$input['user_id'] : 1;
-$amount = isset($input['amount']) ? (float)$input['amount'] : 0;
-$method = trim($input['method'] ?? 'card');
+  $userId = isset($input['user_id']) ? (int)$input['user_id'] : 1;
+  $phone = $input['phone'] ?? '';
+  $amount = isset($input['amount']) ? (float)$input['amount'] : 0;
+  $method = trim($input['method'] ?? 'card');
+
+  // Find the correct user ID from the phone number
+  if (!empty($phone)) {
+      $stmtFindUser = $pdo->prepare('SELECT id FROM users WHERE phone = ? LIMIT 1');
+      $stmtFindUser->execute([$phone]);
+      $foundUser = $stmtFindUser->fetch();
+      if ($foundUser) {
+          $userId = (int)$foundUser['id'];
+      } else {
+          jsonResponse(['success' => false, 'message' => 'Utilisateur introuvé pour ce numéro de téléphone'], 404);
+      }
+  }
 
 if ($amount <= 0) {
     jsonResponse(['success' => false, 'message' => 'Montant invalide'], 400);

@@ -27,23 +27,12 @@ try {
     $user = $stmt->fetch();
 
     if (!$user) {
-        // Vérifier si l'utilisateur 1 existe et a le même numéro ou est vide
-        $stmt1 = $pdo->prepare('SELECT id, phone, balance FROM users WHERE id = 1 FOR UPDATE');
-        $stmt1->execute();
-        $user1 = $stmt1->fetch();
-
-        if ($user1 && (empty($user1['phone']) || $user1['phone'] === $recipientPhone)) {
-            $targetUserId = 1;
-            $newBalance = (float)$user1['balance'] + $amount;
-            $upd = $pdo->prepare('UPDATE users SET phone = ?, balance = ? WHERE id = 1');
-            $upd->execute([$recipientPhone, $newBalance]);
-        } else {
-            // Créer un nouvel utilisateur avec ce numéro
-            $insUser = $pdo->prepare('INSERT INTO users (name, phone, initials, balance, verified) VALUES (?, ?, ?, ?, ?)');
-            $insUser->execute(['', $recipientPhone, '', $amount, 1]);
-            $targetUserId = (int)$pdo->lastInsertId();
-            $newBalance = $amount;
-        }
+        // Phone not found - create a new user instead of falling back to user_id=1
+        // This prevents account data from leaking between users
+        $insUser = $pdo->prepare('INSERT INTO users (name, phone, initials, balance, verified) VALUES (?, ?, ?, ?, ?)');
+        $insUser->execute(['', $recipientPhone, '', $amount, 1]);
+        $targetUserId = (int)$pdo->lastInsertId();
+        $newBalance = $amount;
     } else {
         $targetUserId = (int)$user['id'];
         $newBalance = (float)$user['balance'] + $amount;

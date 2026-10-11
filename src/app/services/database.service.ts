@@ -150,9 +150,13 @@ export class DatabaseService {
     const local = this.getLocalData();
 
     // Vérification STRICTE : le téléphone stocké doit correspondre exactement au téléphone demandé
+    const normalizePhone = (p: string) => (p || '').replace(/[\s+\-\(\).]/g, '');
+    const storedPhoneNorm = normalizePhone(local.user?.phone || '');
+    const phoneNorm = normalizePhone(phone);
+    
     if (
       local.user &&
-      local.user.phone === phone &&         // correspondance exacte obligatoire
+      storedPhoneNorm === phoneNorm &&         // correspondance normalisée obligatoire
       local.user.name &&
       local.user.name.trim().length > 0
     ) {
@@ -169,7 +173,8 @@ export class DatabaseService {
           const userName = (res.user.name || '').trim();
           if (userName.length > 0 && userName !== 'Amadou Diallo' && userName !== 'Mon Compte') {
             // Only save if the phone matches (don't overwrite existing user's phone)
-            if (local.user.phone === phone || !local.user.phone) {
+            const normalizePhone = (p: string) => (p || '').replace(/[\s+\-\(\).]/g, '');
+            if (normalizePhone(local.user.phone || '') === normalizePhone(phone) || !local.user.phone) {
               local.user.name = userName;
               local.user.phone = phone;
               this.saveLocalData(local);

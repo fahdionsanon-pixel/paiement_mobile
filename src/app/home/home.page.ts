@@ -237,13 +237,17 @@ export class HomePage implements OnInit {
   loadFromLocalDevice(authPhone?: string) {
     const local = this.dbService.getLocalData();
 
+    // Normalize phone numbers for comparison (remove +, spaces, dashes)
+    const normalizePhone = (p: string) => (p || '').replace(/[\s+\-\(\).]/g, '');
+    const storedPhone = normalizePhone(local.user?.phone || '');
+    const authPhoneNorm = normalizePhone(authPhone || '');
+
     // Vérification cruciale : les données stockées appartiennent-elles à ce compte ?
-    const storedPhone = local.user?.phone || '';
-    const isSameUser = !storedPhone || !authPhone || storedPhone === authPhone;
+    const isSameUser = !storedPhone || !authPhoneNorm || storedPhone === authPhoneNorm;
 
     if (!isSameUser) {
       // Autre utilisateur détecté sur cet appareil → réinitialiser proprement
-      console.log(`Compte différent détecté (${storedPhone} ≠ ${authPhone}). Réinitialisation des données locales.`);
+      console.log(`Compte différent détecté (${storedPhone} ≠ ${authPhoneNorm}). Réinitialisation des données locales.`);
       this.dbService.resetLocalDatabase();
       // Repartir sur des données vides pour ce nouvel utilisateur
       this.user = { name: '', phone: authPhone || '', initials: '', verified: false, cashbackBalance: 0 };
@@ -297,7 +301,7 @@ export class HomePage implements OnInit {
 
   updateWampUrl() {
     this.dbService.setWampApiUrl(this.wampApiUrl);
-    this.syncDatabase(true);
+    this.syncDatabase(true, this.auth.getPhone());
     this.isDbSettingsModalOpen = false;
   }
 
