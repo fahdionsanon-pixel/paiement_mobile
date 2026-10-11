@@ -106,7 +106,6 @@ export class HomePage implements OnInit {
 
   // Send Money form
   sendForm = {
-    recipientName: '',
     recipientPhone: '',
     amount: null as number | null,
     note: '',
@@ -120,7 +119,7 @@ export class HomePage implements OnInit {
   // Scanner state
   scanActiveTab: 'scan' | 'my_qr' = 'scan';
 
-  // Quick preset amounts for transfers
+  // Quick preset amounts for transfers (unused - kept for reference)
   presetAmounts = [5000, 10000, 25000, 50000, 100000];
 
   // Quick contacts — vide pour un nouveau compte
@@ -580,17 +579,12 @@ export class HomePage implements OnInit {
 
   // Contact quick tap
   selectContact(contact: QuickContact) {
-    this.sendForm.recipientName = contact.name;
     this.sendForm.recipientPhone = contact.phone;
     this.isSendModalOpen = true;
   }
 
   openSendModal() {
     this.isSendModalOpen = true;
-  }
-
-  setPresetAmount(amount: number) {
-    this.sendForm.amount = amount;
   }
 
   // Execute Send Money
@@ -600,12 +594,12 @@ export class HomePage implements OnInit {
       return;
     }
 
-    if (this.sendForm.amount > this.balanceXOF) {
-      this.showToast('Solde insuffisant pour cette opération.', 'danger');
+    if (!this.sendForm.recipientPhone) {
+      this.showToast('Veuillez saisir le numéro du destinataire.', 'danger');
       return;
     }
 
-    const recipient = this.sendForm.recipientName || this.sendForm.recipientPhone || 'Destinataire';
+    const recipient = this.sendForm.recipientPhone;
     const amountVal = Number(this.sendForm.amount);
     const noteVal = this.sendForm.note || 'Transfert instantané PayPulse';
 
@@ -624,7 +618,6 @@ export class HomePage implements OnInit {
 
     // Reset form
     this.sendForm = {
-      recipientName: '',
       recipientPhone: '',
       amount: null,
       note: '',
@@ -633,9 +626,11 @@ export class HomePage implements OnInit {
 
     const statusMsg = result.synced
       ? `✅ Transfert de ${this.formatAmount(amountVal)} synchronisé avec WAMP MySQL !`
-      : `📱 Transfert de ${this.formatAmount(amountVal)} enregistré sur l'appareil (mode local) !`;
+      : result.newBalance >= 0
+        ? `📱 Transfert de ${this.formatAmount(amountVal)} enregistré sur l'appareil (mode local) !`
+        : `⚠️ Transfert de ${this.formatAmount(amountVal)} validé (solde négatif) !`;
 
-    await this.showToast(statusMsg, 'success');
+    await this.showToast(statusMsg, result.synced ? 'success' : result.newBalance >= 0 ? 'warning' : 'warning');
   }
 
   // Execute Top Up
@@ -664,7 +659,7 @@ export class HomePage implements OnInit {
   // Pay a bill
   async payBill(bill: any) {
     this.isServicesModalOpen = false;
-    this.sendForm.recipientName = bill.name;
+    this.sendForm.recipientPhone = bill.phone || '';
     this.sendForm.note = 'Paiement facture ' + bill.name;
     this.sendForm.amount = 14200;
     this.isSendModalOpen = true;
