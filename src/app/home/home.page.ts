@@ -207,6 +207,10 @@ export class HomePage implements OnInit {
     // Récupérer le numéro de téléphone depuis l'auth
     const authPhone = this.auth.getPhone();
 
+    // Check if we should show PIN setup (from navigation state)
+    const navigation = this.router.getCurrentNavigation();
+    const showPinSetup = navigation?.extras?.state?.['showPinSetup'] === true;
+
     // Charger les données locales SEULEMENT si elles appartiennent à ce compte
     this.loadFromLocalDevice(authPhone);
 
@@ -228,6 +232,11 @@ export class HomePage implements OnInit {
 
     // Sync with the authenticated phone number (not from local data which may be empty)
     await this.syncDatabase(false, authPhone);
+
+    // Auto-open PIN setup if requested or if no PIN is set
+    if (showPinSetup || !this.isPinSetup) {
+      this.openPinSetup();
+    }
   }
 
   openProfile() {

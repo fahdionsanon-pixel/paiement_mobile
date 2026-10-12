@@ -32,6 +32,11 @@ export class AuthService {
     this.loadLocalSession();
   }
 
+  // Normalize phone to digits only for consistent localStorage keys
+  private normalizePhone(phone: string): string {
+    return (phone || '').replace(/[^0-9]/g, '');
+  }
+
   getPhone(): string {
     return this.currentUser?.phone || this.pendingPhone;
   }
@@ -68,33 +73,34 @@ export class AuthService {
   }
 
   // Step 2: Verify the code
-  async verifyOtp(code: string): Promise<{ success: boolean; user: User | null; message: string }> {
+  async verifyOtp(code: string): Promise<{ success: boolean; user: User | null; message: string; hasPin: boolean }> {
     try {
       const res = await this.api.verifyOtp(this.pendingPhone, code);
       if (res.success) {
         // Fetch user data from server
         const userData = await this.api.getUserData(this.pendingPhone);
+        const normPhone = this.normalizePhone(this.pendingPhone);
         if (userData.success && userData.user) {
           this.currentUser = userData.user;
-          this.pinSet = !!localStorage.getItem(`paypulse_pin_${this.pendingPhone}`);
+          this.pinSet = !!localStorage.getItem(`paypulse_pin_${normPhone}`);
           this.authenticated = true;
           this.pendingOtp = '';
           this.saveLocalSession();
           this.updateState();
-          return { success: true, user: this.currentUser, message: res.message };
+          return { success: true, user: this.currentUser, message: res.message, hasPin: this.pinSet };
         }
         // Fallback if getUserData fails
         this.currentUser = { id: 0, phone: this.pendingPhone, name: '' };
-        this.pinSet = !!localStorage.getItem(`paypulse_pin_${this.pendingPhone}`);
+        this.pinSet = !!localStorage.getItem(`paypulse_pin_${normPhone}`);
         this.authenticated = true;
         this.pendingOtp = '';
         this.saveLocalSession();
         this.updateState();
-        return { success: true, user: this.currentUser, message: res.message };
+        return { success: true, user: this.currentUser, message: res.message, hasPin: this.pinSet };
       }
-      return { success: false, user: null, message: res.message || 'Code incorrect' };
+      return { success: false, user: null, message: res.message || 'Code incorrect', hasPin: false };
     } catch (err: any) {
-      return { success: false, user: null, message: err?.error?.message || 'Vérification impossible' };
+      return { success: false, user: null, message: err?.error?.message || 'Vérification impossible', hasPin: false };
     }
   }
 
@@ -104,7 +110,8 @@ export class AuthService {
       if (!/^\d{4}$/.test(pin)) {
         return { success: false, message: 'Le PIN doit être à 4 chiffres' };
       }
-      localStorage.setItem(`paypulse_pin_${this.pendingPhone}`, pin);
+      const normPhone = this.normalizePhone(this.currentUser?.phone || this.pendingPhone);
+      localStorage.setItem(`paypulse_pin_${normPhone}`, pin);
       this.pinSet = true;
       this.saveLocalSession();
       this.updateState();
@@ -129,7 +136,8 @@ export class AuthService {
 
   // Verify PIN locally
   verifyPin(pin: string): boolean {
-    const savedPin = localStorage.getItem(`paypulse_pin_${this.currentUser?.phone || this.pendingPhone}`);
+    const normPhone = this.normalizePhone(this.currentUser?.phone || this.pendingPhone);
+    const savedPin = localStorage.getItem(`paypulse_pin_${normPhone}`);
     return pin === savedPin;
   }
 
@@ -141,7 +149,8 @@ export class AuthService {
       const res = await this.api.getUserData(this.currentUser!.phone);
       if (res.success && res.user) {
         this.currentUser = res.user;
-        this.pinSet = !!localStorage.getItem(`paypulse_pin_${this.currentUser!.phone}`);
+        const normPhone = this.normalizePhone(this.currentUser!.phone);
+        this.pinSet = !!localStorage.getItem(`paypulse_pin_${normPhone}`);
         this.authenticated = true;
         this.updateState();
         return true;

@@ -71,7 +71,14 @@ export class OtpPage implements OnInit {
     }
     await this.showToast('Connexion réussie !', 'success');
     const hasName = !!res.user?.name;
-    this.router.navigate([hasName ? '/home' : '/setup-profile'], { replaceUrl: true });
+    const hasPin = res.hasPin;
+    if (!hasName) {
+      this.router.navigate(['/setup-profile'], { replaceUrl: true });
+    } else if (!hasPin) {
+      this.router.navigate(['/home'], { replaceUrl: true, state: { showPinSetup: true } });
+    } else {
+      this.router.navigate(['/home'], { replaceUrl: true });
+    }
   }
 
   async resend() {

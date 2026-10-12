@@ -52,7 +52,9 @@ export class SetupProfilePage implements OnInit {
       if (!res.success) throw new Error(res.message);
       await loader.dismiss();
       this.loading = false;
-      this.router.navigate(['/home'], { replaceUrl: true });
+      // Check if PIN is set, if not navigate with showPinSetup flag
+      const hasPin = this.auth.hasPin();
+      this.router.navigate(['/home'], { replaceUrl: true, state: { showPinSetup: !hasPin } });
     } catch (err: any) {
       await loader.dismiss();
       this.loading = false;
