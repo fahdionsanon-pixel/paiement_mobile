@@ -68,7 +68,7 @@ export class AuthService {
   }
 
   // Step 2: Verify the code
-  async verifyOtp(code: string): Promise<{ success: boolean; user?: User; message: string }> {
+  async verifyOtp(code: string): Promise<{ success: boolean; user: User | null; message: string }> {
     try {
       const res = await this.api.verifyOtp(this.pendingPhone, code);
       if (res.success) {
@@ -92,9 +92,9 @@ export class AuthService {
         this.updateState();
         return { success: true, user: this.currentUser, message: res.message };
       }
-      return { success: false, message: res.message || 'Code incorrect' };
+      return { success: false, user: null, message: res.message || 'Code incorrect' };
     } catch (err: any) {
-      return { success: false, message: err?.error?.message || 'Vérification impossible' };
+      return { success: false, user: null, message: err?.error?.message || 'Vérification impossible' };
     }
   }
 
@@ -138,10 +138,10 @@ export class AuthService {
     if (!this.currentUser) return false;
     try {
       // Optionally verify with server
-      const res = await this.api.getUserData(this.currentUser.phone);
+      const res = await this.api.getUserData(this.currentUser!.phone);
       if (res.success && res.user) {
         this.currentUser = res.user;
-        this.pinSet = !!localStorage.getItem(`paypulse_pin_${this.currentUser.phone}`);
+        this.pinSet = !!localStorage.getItem(`paypulse_pin_${this.currentUser!.phone}`);
         this.authenticated = true;
         this.updateState();
         return true;

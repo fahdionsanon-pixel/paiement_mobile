@@ -702,9 +702,6 @@ export class HomePage implements OnInit {
     }
   }
 
-    await this.showToast(statusMsg, 'success');
-  }
-
   // Pay a bill
   async payBill(bill: any) {
     this.isServicesModalOpen = false;
