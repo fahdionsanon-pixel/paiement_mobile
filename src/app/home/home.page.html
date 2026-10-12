@@ -11,7 +11,8 @@
         </div>
         <div class="wave-user-text">
           <span class="wave-greeting">
-            Bonjour<span *ngIf="user.name">, {{ user.name.split(' ')[0] }}</span> 👋
+            <span *ngIf="user.name">Bonjour, {{ user.name.split(' ')[0] }}</span>
+            <span *ngIf="!user.name">Bienvenue sur PayPulse</span> 👋
           </span>
         </div>
       </div>
@@ -629,8 +630,8 @@
             <p class="wave-pin-sub">Ce code sera utilisé pour authentifier vos transactions</p>
 
             <div class="wave-pin-inputs">
-              <input type="password" maxlength="1" [(ngModel)]="pinInput" placeholder="•" />
-              <input type="password" maxlength="1" [(ngModel)]="pinConfirm" placeholder="•" />
+              <input type="password" maxlength="4" [(ngModel)]="pinInput" placeholder="••••" />
+              <input type="password" maxlength="4" [(ngModel)]="pinConfirm" placeholder="••••" />
             </div>
 
             <p class="wave-pin-error" *ngIf="pinError">{{ pinError }}</p>
