@@ -17,6 +17,10 @@ const routes: Routes = [
     loadChildren: () => import('./setup-profile/setup-profile.module').then(m => m.SetupProfilePageModule),
   },
   {
+    path: 'pin-setup',
+    loadChildren: () => import('./pin-setup/pin-setup.module').then(m => m.PinSetupPageModule),
+  },
+  {
     path: 'home',
     loadChildren: () => import('./home/home.module').then(m => m.HomePageModule),
     canActivate: [authGuard],

@@ -630,13 +630,25 @@
             <p class="wave-pin-sub">Ce code sera utilisé pour authentifier vos transactions</p>
 
             <div class="wave-pin-inputs">
-              <input type="password" maxlength="4" [(ngModel)]="pinInput" placeholder="••••" />
-              <input type="password" maxlength="4" [(ngModel)]="pinConfirm" placeholder="••••" />
+              <div class="pin-digits">
+                <input type="text" maxlength="1" [(ngModel)]="pinDigits[0]" (input)="moveFocus($event, 1)" placeholder="•" />
+                <input type="text" maxlength="1" [(ngModel)]="pinDigits[1]" (input)="moveFocus($event, 2)" placeholder="•" />
+                <input type="text" maxlength="1" [(ngModel)]="pinDigits[2]" (input)="moveFocus($event, 3)" placeholder="•" />
+                <input type="text" maxlength="1" [(ngModel)]="pinDigits[3]" (input)="moveFocus($event, -1)" placeholder="•" />
+              </div>
+            </div>
+
+            <div class="wave-form-group" *ngIf="pinDigits.join('').length === 4">
+              <label class="wave-label">Confirmer le PIN</label>
+              <div class="wave-input-box">
+                <ion-icon name="lock-closed-outline"></ion-icon>
+                <input type="password" maxlength="4" [(ngModel)]="pinConfirm" placeholder="••••" />
+              </div>
             </div>
 
             <p class="wave-pin-error" *ngIf="pinError">{{ pinError }}</p>
 
-            <button class="wave-confirm-btn" (click)="confirmPinSetup()">
+            <button class="wave-confirm-btn" [disabled]="pinDigits.join('').length !== 4 || !pinConfirm" (click)="confirmPinSetup()">
               <ion-icon name="checkmark-circle"></ion-icon>
               Enregistrer le PIN
             </button>

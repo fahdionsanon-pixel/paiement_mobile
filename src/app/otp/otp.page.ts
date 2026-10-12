@@ -75,7 +75,7 @@ export class OtpPage implements OnInit {
     if (!hasName) {
       this.router.navigate(['/setup-profile'], { replaceUrl: true });
     } else if (!hasPin) {
-      this.router.navigate(['/home'], { replaceUrl: true, state: { showPinSetup: true } });
+      this.router.navigate(['/pin-setup'], { replaceUrl: true });
     } else {
       this.router.navigate(['/home'], { replaceUrl: true });
     }

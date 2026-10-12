@@ -143,7 +143,7 @@ export class HomePage implements OnInit {
 
   // PIN Security
   isPinSetup = false;
-  pinInput = '';
+  pinDigits: string[] = ['', '', '', ''];
   pinConfirm = '';
   pinError = '';
 
@@ -207,10 +207,6 @@ export class HomePage implements OnInit {
     // Récupérer le numéro de téléphone depuis l'auth
     const authPhone = this.auth.getPhone();
 
-    // Check if we should show PIN setup (from navigation state)
-    const navigation = this.router.getCurrentNavigation();
-    const showPinSetup = navigation?.extras?.state?.['showPinSetup'] === true;
-
     // Charger les données locales SEULEMENT si elles appartiennent à ce compte
     this.loadFromLocalDevice(authPhone);
 
@@ -232,11 +228,6 @@ export class HomePage implements OnInit {
 
     // Sync with the authenticated phone number (not from local data which may be empty)
     await this.syncDatabase(false, authPhone);
-
-    // Auto-open PIN setup if requested or if no PIN is set
-    if (showPinSetup || !this.isPinSetup) {
-      this.openPinSetup();
-    }
   }
 
   openProfile() {
@@ -825,31 +816,42 @@ export class HomePage implements OnInit {
   }
 
   openPinSetup() {
-    this.pinInput = '';
+    this.pinDigits = ['', '', '', ''];
     this.pinConfirm = '';
     this.pinError = '';
     this.isPinModalOpen = true;
   }
 
   async confirmPinSetup() {
-    if (!/^\d{4}$/.test(this.pinInput)) {
+    const pin = this.pinDigits.join('');
+    if (!/^\d{4}$/.test(pin)) {
       this.pinError = 'Le PIN doit être à 4 chiffres.';
       return;
     }
-    if (this.pinInput !== this.pinConfirm) {
+    if (pin !== this.pinConfirm) {
       this.pinError = 'Les codes ne correspondent pas.';
       return;
     }
-    const res = await this.auth.setPin(this.pinInput);
+    const res = await this.auth.setPin(pin);
     if (!res.success) {
       this.pinError = res.message;
       return;
     }
-    this.pinInput = '';
+    this.pinDigits = ['', '', '', ''];
     this.pinConfirm = '';
     this.isPinSetup = true;
     this.isPinModalOpen = false;
     this.showToast('PIN enregistré avec succès !', 'success');
+  }
+
+  moveFocus(event: Event, nextIndex: number) {
+    const input = event.target as HTMLInputElement;
+    if (input.value.length === 1 && nextIndex >= 0 && nextIndex < 4) {
+      const nextInput = input.parentElement?.querySelectorAll('input')[nextIndex] as HTMLInputElement;
+      nextInput?.focus();
+    } else if (input.value.length === 0 && nextIndex === -1) {
+      // Backspace handling - could move to previous if needed
+    }
   }
 
   // Logout
