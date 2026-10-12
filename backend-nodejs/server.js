@@ -1,7 +1,3 @@
-// PayPulse API Server
-// Node.js + Express + better-sqlite3
-// Architecture: 3 pièces - Base de données, API, App
-
 import express from 'express';
 import cors from 'cors';
 import bodyParser from 'body-parser';
@@ -12,6 +8,7 @@ import pinRoutes from './routes/pin.js';
 import transferRoutes from './routes/transfer.js';
 import transactionRoutes from './routes/transactions.js';
 import sessionRoutes from './routes/session.js';
+import profileRoutes from './routes/profile.js';
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -36,6 +33,7 @@ app.use('/api/pin', pinRoutes);
 app.use('/api/transfer', transferRoutes);
 app.use('/api/transactions', transactionRoutes);
 app.use('/api/session', sessionRoutes);
+app.use('/api/profile', profileRoutes);
 
 // Error handler
 app.use((err, req, res, next) => {

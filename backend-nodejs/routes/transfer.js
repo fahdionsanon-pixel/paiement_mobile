@@ -1,124 +1,112 @@
-// Transfer Routes - Atomic money transfer with idempotency
-// The server decides everything: balance, PIN, recipient existence
-
 import { Router } from 'express';
-import { getDb, generateReference, generateIdempotencyKey, verifyPin } from '../database.js';
+import { getDb, generateReference, verifyPin } from '../database.js';
+import { requireSession } from '../middleware/requireSession.js';
 
 const router = Router();
 
-// Transfer money - atomic transaction
-router.post('/send', (req, res) => {
+const MAX_PIN_ATTEMPTS = 5;
+const LOCK_MINUTES = 15;
+
+router.post('/send', requireSession, (req, res) => {
+  const db = getDb();
+  const sender = req.user; // sender comes from session
+  const { recipientPhone, amount, idempotency_key } = req.body;
+  const pin = String(req.body.pin || '');
+
+  // Validate inputs
+  if (!recipientPhone || !amount || !pin || !idempotency_key) {
+    return res.status(400).json({ success: false, message: 'Destinataire, montant, PIN et clé requis' });
+  }
+
+  if (!Number.isInteger(amount) || amount <= 0) {
+    return res.status(400).json({ success: false, message: 'Le montant doit être un entier positif' });
+  }
+
+  const cleanRecipient = String(recipientPhone || '').replace(/[^0-9]/g, '');
+
+  if (cleanRecipient === sender.phone) {
+    return res.status(400).json({ success: false, message: 'Vous ne pouvez pas vous envoyer de l\'argent' });
+  }
+
+  const senderAccount = db.prepare('SELECT * FROM accounts WHERE user_id = ?').get(sender.id);
+  if (!senderAccount) {
+    return res.status(500).json({ success: false, message: 'Compte manquant' });
+  }
+
+  // Same key + same sender = same transaction: return result without redoing
+  const existing = db
+    .prepare('SELECT reference, amount FROM transactions WHERE idempotency_key = ? AND from_account_id = ?')
+    .get(idempotency_key, senderAccount.id);
+  if (existing) {
+    return res.json({
+      success: true,
+      duplicate: true,
+      transaction: { ...existing, sender_new_balance: senderAccount.balance },
+    });
+  }
+
+  // Account locked after too many PIN attempts
+  if (sender.locked_until && new Date(sender.locked_until) > new Date()) {
+    return res.status(423).json({ success: false, message: 'Compte verrouillé, réessayez plus tard' });
+  }
+
+  if (!sender.pin_hash) {
+    return res.status(400).json({ success: false, message: 'Définissez d\'abord votre PIN' });
+  }
+
+  if (!verifyPin(String(pin), sender.pin_hash)) {
+    const attempts = sender.failed_pin_attempts + 1;
+    if (attempts >= MAX_PIN_ATTEMPTS) {
+      const until = new Date(Date.now() + LOCK_MINUTES * 60 * 1000).toISOString();
+      db.prepare('UPDATE users SET failed_pin_attempts = 0, locked_until = ? WHERE id = ?').run(until, sender.id);
+    } else {
+      db.prepare('UPDATE users SET failed_pin_attempts = ? WHERE id = ?').run(attempts, sender.id);
+    }
+    return res.status(400).json({ success: false, message: 'PIN incorrect' });
+  }
+
+  // Reset failed attempts on success
+  db.prepare('UPDATE users SET failed_pin_attempts = 0, locked_until = NULL WHERE id = ?').run(sender.id);
+
+  const recipient = db.prepare('SELECT * FROM users WHERE phone = ?').get(cleanRecipient);
+  if (!recipient) {
+    return res.status(404).json({ success: false, message: 'Destinataire introuvable' });
+  }
+
+  const recipientAccount = db.prepare('SELECT * FROM accounts WHERE user_id = ?').get(recipient.id);
+  if (!recipientAccount) {
+    return res.status(500).json({ success: false, message: 'Compte du destinataire manquant' });
+  }
+
+  const reference = generateReference('TX');
   try {
-    const { phone, recipientPhone, amount, pin, idempotency_key } = req.body;
-
-    // Validate inputs
-    if (!phone || !recipientPhone || !amount || !pin) {
-      return res.status(400).json({
-        success: false,
-        message: 'Champs requis: phone, recipientPhone, amount, pin'
-      });
-    }
-
-    if (amount <= 0 || !Number.isInteger(amount)) {
-      return res.status(400).json({ success: false, message: 'Montant doit être un entier positif' });
-    }
-
-    const db = getDb();
-    const cleanPhone = phone.replace(/[^0-9]/g, '');
-    const cleanRecipient = recipientPhone.replace(/[^0-9]/g, '');
-
-    // Check idempotency
-    const idemKey = idempotency_key || generateIdempotencyKey();
-    const existing = db.prepare('SELECT * FROM transactions WHERE idempotency_key = ?').get(idemKey);
-    if (existing) {
-      return res.json({
-        success: true,
-        message: 'Envoi déjà traité (idempotence)',
-        transaction: existing,
-        duplicate: true
-      });
-    }
-
-    // Find sender
-    const sender = db.prepare('SELECT * FROM users WHERE phone = ?').get(cleanPhone);
-    if (!sender) {
-      return res.status(404).json({ success: false, message: 'Expéditeur introuvable' });
-    }
-
-    // Check PIN
-    if (!verifyPin(pin, sender.pin_hash)) {
-      db.prepare('UPDATE users SET failed_pin_attempts = failed_pin_attempts + 1 WHERE id = ?').run(sender.id);
-      return res.status(400).json({ success: false, message: 'PIN incorrect' });
-    }
-
-    // Find recipient
-    const recipient = db.prepare('SELECT * FROM users WHERE phone = ?').get(cleanRecipient);
-    if (!recipient) {
-      return res.status(404).json({ success: false, message: 'Destinataire introuvé' });
-    }
-
-    // Find accounts
-    const senderAccount = db.prepare('SELECT * FROM accounts WHERE user_id = ?').get(sender.id);
-    const recipientAccount = db.prepare('SELECT * FROM accounts WHERE user_id = ?').get(recipient.id);
-
-    if (!senderAccount || !recipientAccount) {
-      return res.status(500).json({ success: false, message: 'Compte manquant' });
-    }
-
-    // Check balance (server-side check)
-    if (senderAccount.balance < amount) {
+    db.transaction(() => {
+      const debit = db
+        .prepare(`UPDATE accounts SET balance = balance - ?, updated_at = datetime('now') WHERE id = ? AND balance >= ?`)
+        .run(amount, senderAccount.id, amount);
+      if (debit.changes === 0) throw new Error('INSUFFICIENT_FUNDS');
+      db.prepare(`UPDATE accounts SET balance = balance + ?, updated_at = datetime('now') WHERE id = ?`)
+        .run(amount, recipientAccount.id);
+      db.prepare(
+        `INSERT INTO transactions (reference, idempotency_key, type, from_account_id, to_account_id, amount, status)
+         VALUES (?, ?, 'transfer', ?, ?, ?, 'completed')`
+      ).run(reference, idempotency_key, senderAccount.id, recipientAccount.id, amount);
+    })();
+  } catch (err) {
+    if (err.message === 'INSUFFICIENT_FUNDS') {
       return res.status(400).json({ success: false, message: 'Solde insuffisant' });
     }
-
-    // Atomic transaction
-    const reference = generateReference('TX');
-    const tx = db.transaction(() => {
-      // Debit sender
-      const debitResult = db.prepare(
-        'UPDATE accounts SET balance = balance - ? WHERE id = ? AND balance >= ?'
-      ).run(amount, senderAccount.id, amount);
-      
-      if (debitResult.changes === 0) {
-        throw new Error('Solde insuffisant');
-      }
-
-      // Credit recipient
-      db.prepare('UPDATE accounts SET balance = balance + ? WHERE id = ?')
-        .run(amount, recipientAccount.id);
-
-      // Insert transaction record
-      db.prepare(
-        `INSERT INTO transactions 
-        (reference, idempotency_key, type, from_account_id, to_account_id, amount, status)
-        VALUES (?, ?, 'transfer', ?, ?, ?, 'completed')`
-      ).run(reference, idemKey, senderAccount.id, recipientAccount.id, amount);
-
-      return reference;
-    });
-
-    const ref = tx();
-
-    // Get updated balances
-    const newSenderBalance = db.prepare('SELECT balance FROM accounts WHERE id = ?').get(senderAccount.id).balance;
-    const newRecipientBalance = db.prepare('SELECT balance FROM accounts WHERE id = ?').get(recipientAccount.id).balance;
-
-    res.json({
-      success: true,
-      message: 'Transfert effectué',
-      transaction: {
-        reference: ref,
-        idempotency_key: idemKey,
-        amount,
-        from: cleanPhone,
-        to: cleanRecipient,
-        sender_new_balance: newSenderBalance,
-        recipient_new_balance: newRecipientBalance
-      }
-    });
-  } catch (err) {
     console.error('Transfer error:', err);
-    res.status(500).json({ success: false, message: 'Erreur serveur: ' + err.message });
+    return res.status(500).json({ success: false, message: 'Erreur serveur' });
   }
+
+  const { balance } = db.prepare('SELECT balance FROM accounts WHERE id = ?').get(senderAccount.id);
+
+  res.json({
+    success: true,
+    message: 'Transfert effectué',
+    transaction: { reference, amount, to: cleanRecipient, sender_new_balance: balance },
+  });
 });
 
 export default router;

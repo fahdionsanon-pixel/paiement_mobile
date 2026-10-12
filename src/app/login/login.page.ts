@@ -1,7 +1,7 @@
 import { Component, OnInit } from '@angular/core';
 import { Router } from '@angular/router';
 import { ToastController, LoadingController } from '@ionic/angular';
-import { Auth, FirebaseConfig } from '../services/auth';
+import { AuthService } from '../services/auth-new.service';
 
 @Component({
   selector: 'app-login',
@@ -13,8 +13,6 @@ export class LoginPage implements OnInit {
   selectedCountry = '+226';
   phone = '';
   loading = false;
-  showConfigModal = false;
-  isFirebaseActive = false;
 
   countries = [
     { code: '+226', flag: '🇧🇫', name: 'Burkina Faso' },
@@ -27,54 +25,14 @@ export class LoginPage implements OnInit {
     { code: '+1', flag: '🇺🇸', name: 'USA / Canada' },
   ];
 
-  fbConfig: FirebaseConfig = {
-    apiKey: '',
-    authDomain: '',
-    projectId: '',
-    storageBucket: '',
-    messagingSenderId: '',
-    appId: '',
-  };
-
   constructor(
-    private auth: Auth,
+    private auth: AuthService,
     private router: Router,
     private toastCtrl: ToastController,
     private loadingCtrl: LoadingController
   ) {}
 
-  ngOnInit() {
-    this.refreshFirebaseStatus();
-  }
-
-  refreshFirebaseStatus() {
-    this.isFirebaseActive = this.auth.isFirebaseConfigured();
-    const current = this.auth.getFirebaseConfig();
-    if (current) {
-      this.fbConfig = { ...current };
-    }
-  }
-
-  openConfigModal() {
-    this.refreshFirebaseStatus();
-    this.showConfigModal = true;
-  }
-
-  closeConfigModal() {
-    this.showConfigModal = false;
-  }
-
-  saveConfig() {
-    this.auth.saveFirebaseConfig(this.fbConfig);
-    this.refreshFirebaseStatus();
-    this.showConfigModal = false;
-    this.showToast(
-      this.isFirebaseActive
-        ? 'Configuration Firebase enregistrée avec succès !'
-        : 'Configuration enregistrée (mode simulation actif si clés partielles).',
-      'success'
-    );
-  }
+  ngOnInit() {}
 
   get fullPhone(): string {
     let digits = (this.phone || '').replace(/\s+/g, '').replace(/[-().]/g, '');
@@ -91,41 +49,19 @@ export class LoginPage implements OnInit {
   }
 
   async confirm() {
-    if (!this.isValid()) return;
-
+    if (!this.isValid() || this.loading) return;
     this.loading = true;
-    const loader = await this.loadingCtrl.create({
-      message: 'Envoi du code par SMS...',
-      spinner: 'crescent',
-    });
+    const loader = await this.loadingCtrl.create({ message: 'Envoi du code...', spinner: 'crescent' });
     await loader.present();
-
-    try {
-      const res = await this.auth.sendOtp(this.fullPhone);
-      await loader.dismiss();
-      this.loading = false;
-
-      await this.showToast(
-        `Code SMS généré pour le ${this.fullPhone} : ${res.otp}`,
-        'success',
-        8000
-      );
-
-      this.router.navigate(['/otp']);
-    } catch (err: any) {
-      await loader.dismiss();
-      this.loading = false;
-      await this.showToast(
-        `Erreur : ${err?.message || "Impossible d'envoyer le SMS"}`,
-        'danger',
-        6000
-      );
+    const res = await this.auth.sendOtp(this.fullPhone);
+    await loader.dismiss();
+    this.loading = false;
+    if (!res.success) {
+      await this.showToast(res.message, 'danger', 6000);
+      return;
     }
-  }
-
-  directAccess() {
-    this.auth.loginDirect();
-    this.router.navigate(['/home']);
+    await this.showToast(`Code de test pour le ${this.fullPhone} : ${res.otp}`, 'success', 8000);
+    this.router.navigate(['/otp']);
   }
 
   private async showToast(message: string, color: string, duration = 4000) {

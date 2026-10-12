@@ -234,9 +234,19 @@
             </div>
           </div>
 
-          <button class="wave-confirm-btn" [disabled]="!sendForm.amount || sendForm.amount <= 0 || !sendForm.recipientPhone" (click)="confirmSendMoney()">
-            <ion-icon name="paper-plane"></ion-icon>
-            Confirmer l'envoi
+          <div class="wave-form-group">
+            <label class="wave-label">Votre PIN *</label>
+            <div class="wave-input-box">
+              <ion-icon name="lock-closed-outline"></ion-icon>
+              <input type="password" inputmode="numeric" maxlength="4" placeholder="Votre PIN" [(ngModel)]="sendPin" />
+            </div>
+          </div>
+
+          <button class="wave-confirm-btn" [disabled]="!sendForm.amount || sendForm.amount <= 0 || !sendForm.recipientPhone || sendPin.length !== 4 || isSending" (click)="confirmSendMoney()">
+            <ion-spinner *ngIf="isSending" name="crescent"></ion-spinner>
+            <ion-icon *ngIf="!isSending" name="paper-plane"></ion-icon>
+            <span *ngIf="!isSending">Confirmer l'envoi</span>
+            <span *ngIf="isSending">Envoi en cours...</span>
           </button>
         </div>
       </ion-content>

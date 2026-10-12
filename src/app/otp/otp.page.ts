@@ -1,8 +1,7 @@
 import { Component, OnInit } from '@angular/core';
 import { Router } from '@angular/router';
 import { ToastController, LoadingController } from '@ionic/angular';
-import { Auth } from '../services/auth';
-import { DatabaseService } from '../services/database.service';
+import { AuthService } from '../services/auth-new.service';
 
 @Component({
   selector: 'app-otp',
@@ -20,17 +19,20 @@ export class OtpPage implements OnInit {
   notificationCopied = false;
 
   constructor(
-    private auth: Auth,
+    private auth: AuthService,
     private router: Router,
     private toastCtrl: ToastController,
-    private loadingCtrl: LoadingController,
-    private db: DatabaseService
+    private loadingCtrl: LoadingController
   ) {}
 
   ngOnInit() {
     this.phone = this.auth.getPhone();
-    this.currentOtp = this.auth.getCurrentOtp();
-    this.isFirebaseActive = this.auth.isFirebaseConfigured();
+    if (!this.phone) {
+      this.router.navigate(['/login'], { replaceUrl: true });
+      return;
+    }
+    this.currentOtp = this.auth.getPendingOtp();
+    this.isFirebaseActive = false;
     this.showPushNotification = true;
   }
 
@@ -57,60 +59,28 @@ export class OtpPage implements OnInit {
     if (codeStr.length < 6) return;
 
     this.loading = true;
-    const loader = await this.loadingCtrl.create({
-      message: 'Vérification du code SMS...',
-      spinner: 'crescent',
-    });
+    const loader = await this.loadingCtrl.create({ message: 'Vérification du code...', spinner: 'crescent' });
     await loader.present();
-
-    try {
-      const res = await this.auth.verifyOtp(codeStr);
-      await loader.dismiss();
-      this.loading = false;
-
-      if (res.success) {
-        await this.showToast(res.message || 'Connexion réussie ! Bienvenue sur PayPulse.', 'success');
-        // Check if the user already has a name configured
-        const profile = await this.db.checkUserProfile(this.phone);
-        if (profile.hasName) {
-          this.router.navigate(['/home'], { replaceUrl: true });
-        } else {
-          this.router.navigate(['/setup-profile'], { replaceUrl: true });
-        }
-      } else {
-        this.code = '';
-        await this.showToast(res.message || 'Code invalide.', 'danger', 5000);
-      }
-    } catch (err: any) {
-      await loader.dismiss();
-      this.loading = false;
-      await this.showToast(`Erreur : ${err?.message || 'Vérification échouée'}`, 'danger');
+    const res = await this.auth.verifyOtp(codeStr);
+    await loader.dismiss();
+    this.loading = false;
+    if (!res.success) {
+      this.code = '';
+      await this.showToast(res.message, 'danger', 5000);
+      return;
     }
+    await this.showToast('Connexion réussie !', 'success');
+    const hasName = !!res.user?.name;
+    this.router.navigate([hasName ? '/home' : '/setup-profile'], { replaceUrl: true });
   }
 
   async resend() {
-    this.loading = true;
-    const loader = await this.loadingCtrl.create({
-      message: 'Renvoi du code SMS...',
-      spinner: 'crescent',
-    });
-    await loader.present();
-
-    try {
-      const res = await this.auth.sendOtp(this.phone);
-      await loader.dismiss();
-      this.loading = false;
-
-      if (res.method === 'firebase') {
-        await this.showToast(`Un nouveau SMS a été envoyé au ${this.phone}.`, 'success');
-      } else {
-        this.currentOtp = res.otp || '';
-        await this.showToast(`Nouveau code simulé : ${res.otp}`, 'primary', 10000);
-      }
-    } catch (err: any) {
-      await loader.dismiss();
-      this.loading = false;
-      await this.showToast(`Erreur lors du renvoi : ${err?.message}`, 'danger');
+    const res = await this.auth.sendOtp(this.phone);
+    if (res.success) {
+      this.currentOtp = res.otp || '';
+      await this.showToast(`Nouveau code de test : ${res.otp}`, 'primary', 10000);
+    } else {
+      await this.showToast(res.message, 'danger');
     }
   }
 

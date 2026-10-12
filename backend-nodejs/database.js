@@ -110,23 +110,23 @@ function seedTestData() {
   const insertAccount = db.prepare('INSERT INTO accounts (user_id, balance, currency) VALUES (?, ?, ?)');
   const insertOtp = db.prepare('INSERT INTO otp_codes (phone, code_hash, expires_at) VALUES (?, ?, ?)');
 
-  // Test users with hashed PINs
-  const testPinHash = bcrypt.hashSync('1234', 10);
+   // Test users with hashed PINs
+   const testPinHash = bcrypt.hashSync('1234', 10);
 
-  // User 1
-  const user1 = insertUser.run('+22670123456', 'Amadou Diallo');
-  insertAccount.run(user1.lastInsertId, 100000, 'XOF');
-  db.prepare('UPDATE users SET pin_hash = ? WHERE id = ?').run(testPinHash, user1.lastInsertId);
+   // User 1
+   const user1 = insertUser.run('+22670123456', 'Amadou Diallo');
+   insertAccount.run(user1.lastInsertRowid, 100000, 'XOF');
+   db.prepare('UPDATE users SET pin_hash = ? WHERE id = ?').run(testPinHash, user1.lastInsertRowid);
 
-  // User 2
-  const user2 = insertUser.run('+226709876543', 'Fatou Beye');
-  insertAccount.run(user2.lastInsertId, 50000, 'XOF');
-  db.prepare('UPDATE users SET pin_hash = ? WHERE id = ?').run(testPinHash, user2.lastInsertId);
+   // User 2
+   const user2 = insertUser.run('+226709876543', 'Fatou Beye');
+   insertAccount.run(user2.lastInsertRowid, 50000, 'XOF');
+   db.prepare('UPDATE users SET pin_hash = ? WHERE id = ?').run(testPinHash, user2.lastInsertRowid);
 
-  // User 3
-  const user3 = insertUser.run('+226705555555', 'Test Account');
-  insertAccount.run(user3.lastInsertId, 0, 'XOF');
-  db.prepare('UPDATE users SET pin_hash = ? WHERE id = ?').run(testPinHash, user3.lastInsertId);
+   // User 3
+   const user3 = insertUser.run('+226705555555', 'Test Account');
+   insertAccount.run(user3.lastInsertRowid, 0, 'XOF');
+   db.prepare('UPDATE users SET pin_hash = ? WHERE id = ?').run(testPinHash, user3.lastInsertRowid);
 
   console.log('Test data seeded: 3 users with accounts');
 }

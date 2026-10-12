@@ -1,6 +1,3 @@
-// Auth Service - Uses Node.js API backend
-// Flow: OTP -> PIN -> Session token
-
 import { Injectable } from '@angular/core';
 import { BehaviorSubject } from 'rxjs';
 import { ApiClientService } from './api-client.service';
@@ -14,131 +11,134 @@ export interface User {
 export interface AuthState {
   authenticated: boolean;
   user: User | null;
-  token: string | null;
+  hasPin: boolean;
 }
 
-@Injectable({
-  providedIn: 'root',
-})
+@Injectable({ providedIn: 'root' })
 export class AuthService {
   private currentUser: User | null = null;
-  private currentToken: string | null = null;
   private authenticated = false;
-
+  private pinSet = false;
+  private pendingPhone = '';
+  private pendingOtp = '';
   public authState$ = new BehaviorSubject<AuthState>({
     authenticated: false,
     user: null,
-    token: null,
+    hasPin: false,
   });
 
-  constructor(private api: ApiClientService) {
-    // Restore session
-    const token = this.api.getToken();
-    if (token) {
-      this.currentToken = token;
-      this.validateSession();
-    }
-  }
+  constructor(private api: ApiClientService) {}
 
   getPhone(): string {
-    return this.currentUser?.phone || '+226 70 12 34 56';
+    return this.currentUser?.phone || this.pendingPhone;
+  }
+
+  getPendingOtp(): string {
+    return this.pendingOtp;
   }
 
   getCurrentUser(): User | null {
     return this.currentUser;
   }
 
-  getToken(): string | null {
-    return this.currentToken;
-  }
-
   isAuthenticated(): boolean {
     return this.authenticated;
   }
 
-  // Step 1: Send OTP
+  hasPin(): boolean {
+    return this.pinSet;
+  }
+
+  // Step 1: Request a code
   async sendOtp(phone: string): Promise<{ success: boolean; otp?: string; message: string }> {
     try {
       const res = await this.api.sendOtp(phone);
       if (res.success) {
+        this.pendingPhone = phone;
+        this.pendingOtp = res.otp || '';
         return { success: true, otp: res.otp, message: res.message };
       }
-      return { success: false, message: res.message || 'OTP non envoyé' };
+      return { success: false, message: res.message || 'Code non envoyé' };
     } catch (err: any) {
-      return { success: false, message: err?.message || 'Connexion échouée' };
+      return { success: false, message: err?.error?.message || 'Connexion au serveur impossible' };
     }
   }
 
-  // Step 2: Verify OTP
-  async verifyOtp(phone: string, code: string): Promise<{ success: boolean; user?: User; message: string }> {
+  // Step 2: Verify the code. The server creates the session and returns the token.
+  async verifyOtp(code: string): Promise<{ success: boolean; user?: User; message: string }> {
     try {
-      const res = await this.api.verifyOtp(phone, code);
-      if (res.success) {
+      const res = await this.api.verifyOtp(this.pendingPhone, code);
+      if (res.success && res.token) {
+        this.api.setToken(res.token);
+        this.currentUser = res.user;
+        this.pinSet = !!res.hasPin;
+        this.authenticated = true;
+        this.pendingOtp = '';
+        this.updateState();
         return { success: true, user: res.user, message: res.message };
       }
-      return { success: false, message: res.message || 'OTP incorrect' };
+      return { success: false, message: res.message || 'Code incorrect' };
     } catch (err: any) {
-      return { success: false, message: err?.message || 'Connexion échouée' };
+      return { success: false, message: err?.error?.message || 'Vérification impossible' };
     }
   }
 
-  // Step 3: Set PIN
-  async setPin(phone: string, pin: string): Promise<{ success: boolean; message: string }> {
+  async setPin(pin: string): Promise<{ success: boolean; message: string }> {
     try {
-      const res = await this.api.setPin(phone, pin);
-      return { success: res.success, message: res.message };
-    } catch (err: any) {
-      return { success: false, message: err?.message || 'PIN non enregistré' };
-    }
-  }
-
-  // Step 4: Create session
-  async createSession(phone: string, deviceName?: string): Promise<{ success: boolean; token?: string; user?: User; message: string }> {
-    try {
-      const res = await this.api.createSession(phone, deviceName);
-      if (res.success && res.token) {
-        this.currentToken = res.token;
-        this.api.setToken(res.token);
-        this.currentUser = res.user || null;
-        this.authenticated = true;
+      const res = await this.api.setPin(pin);
+      if (res.success) {
+        this.pinSet = true;
         this.updateState();
-        return { success: true, token: res.token, user: res.user, message: res.message };
       }
-      return { success: false, message: res.message || 'Session non créée' };
+      return { success: !!res.success, message: res.message };
     } catch (err: any) {
-      return { success: false, message: err?.message || 'Connexion échouée' };
+      return { success: false, message: err?.error?.message || 'PIN non enregistré' };
     }
   }
 
-  // Validate current session
+  async updateProfile(name: string): Promise<{ success: boolean; message: string }> {
+    try {
+      const res = await this.api.updateProfile(name);
+      if (res.success && this.currentUser) {
+        this.currentUser = { ...this.currentUser, name };
+        this.updateState();
+      }
+      return { success: !!res.success, message: res.message || '' };
+    } catch (err: any) {
+      return { success: false, message: err?.error?.message || 'Nom non enregistré' };
+    }
+  }
+
+  // At startup: is the stored token still valid on the server?
   async validateSession(): Promise<boolean> {
-    if (!this.currentToken) return false;
+    if (!this.api.getToken()) return false;
     try {
       const res = await this.api.validateSession();
       if (res.success) {
         this.authenticated = true;
         this.currentUser = res.user || null;
+        this.pinSet = !!res.hasPin;
         this.updateState();
         return true;
       }
     } catch (err) {}
-    
-    this.authenticated = false;
-    this.currentUser = null;
-    this.currentToken = null;
-    this.api.clearToken();
-    this.updateState();
+    this.clearLocal();
     return false;
   }
 
-  // Logout
   logout(): void {
-    if (this.currentToken) {
+    if (this.api.getToken()) {
       this.api.revokeSession().catch(() => {});
     }
+    this.clearLocal();
+  }
+
+  private clearLocal(): void {
     this.authenticated = false;
     this.currentUser = null;
-    this.currentToken = null;
+    this.pinSet = false;
+    this.pendingPhone = '';
+    this.pendingOtp = '';
     this.api.clearToken();
     this.updateState();
   }
@@ -147,7 +147,7 @@ export class AuthService {
     this.authState$.next({
       authenticated: this.authenticated,
       user: this.currentUser,
-      token: this.currentToken,
+      hasPin: this.pinSet,
     });
   }
 }

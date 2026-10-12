@@ -112,60 +112,57 @@ export class ApiClientService {
     throw new Error('Méthode non supportée');
   }
 
-  // ===== OTP =====
-  async sendOtp(phone: string): Promise<any> {
-    return this.request('POST', '/api/otp/send', { phone }, false);
-  }
+   // ===== OTP =====
+   async sendOtp(phone: string): Promise<any> {
+     return this.request('POST', '/api/otp/send', { phone }, false);
+   }
 
-  async verifyOtp(phone: string, code: string): Promise<any> {
-    return this.request('POST', '/api/otp/verify', { phone, code }, false);
-  }
+   async verifyOtp(phone: string, code: string): Promise<any> {
+     return this.request('POST', '/api/otp/verify', { phone, code, deviceName: 'Appareil Ionic' }, false);
+   }
 
-  // ===== PIN =====
-  async setPin(phone: string, pin: string): Promise<any> {
-    return this.request('POST', '/api/pin/set', { phone, pin }, false);
-  }
+   // ===== PIN =====
+   async setPin(pin: string): Promise<any> {
+     return this.request('POST', '/api/pin/set', { pin }, true);
+   }
 
-  async verifyPin(phone: string, pin: string): Promise<any> {
-    return this.request('POST', '/api/pin/verify', { phone, pin }, false);
-  }
+   // ===== Session =====
+   async validateSession(): Promise<any> {
+     return this.request('GET', '/api/session/validate', undefined, true);
+   }
 
-  // ===== Session =====
-  async createSession(phone: string, deviceName?: string): Promise<any> {
-    return this.request('POST', '/api/session/create', { phone, deviceName }, false);
-  }
+   async revokeSession(): Promise<any> {
+     return this.request('POST', '/api/session/revoke', undefined, true);
+   }
 
-  async validateSession(): Promise<any> {
-    return this.request('GET', '/api/session/validate', undefined, true);
-  }
+   // ===== Auth =====
+   async login(phone: string): Promise<any> {
+     return this.request('POST', '/api/auth/login', { phone }, false);
+   }
 
-  async revokeSession(): Promise<any> {
-    return this.request('POST', '/api/session/revoke', undefined, true);
-  }
+   // ===== Profile =====
+   async updateProfile(name: string): Promise<any> {
+     return this.request('POST', '/api/profile', { name }, true);
+   }
 
-  // ===== Auth =====
-  async login(phone: string): Promise<any> {
-    return this.request('POST', '/api/auth/login', { phone }, false);
-  }
+   // ===== Transfer =====
+   async sendMoney(recipientPhone: string, amount: number, pin: string, idempotencyKey: string): Promise<any> {
+     return this.request('POST', '/api/transfer/send', {
+       recipientPhone,
+       amount,
+       pin,
+       idempotency_key: idempotencyKey,
+     }, true);
+   }
 
-  // ===== Transfer =====
-  async sendMoney(phone: string, recipientPhone: string, amount: number, pin: string): Promise<any> {
-    return this.request('POST', '/api/transfer/send', {
-      phone,
-      recipientPhone,
-      amount,
-      pin,
-    }, true);
-  }
+   // ===== Transactions =====
+   async getTransactions(): Promise<any> {
+     return this.request('GET', '/api/transactions/list', undefined, true);
+   }
 
-  // ===== Transactions =====
-  async getTransactions(phone: string): Promise<any> {
-    return this.request('GET', '/api/transactions/list', { phone }, true);
-  }
-
-  async getTransaction(reference: string): Promise<any> {
-    return this.request('GET', `/api/transactions/${reference}`, undefined, true);
-  }
+   async getTransaction(reference: string): Promise<any> {
+     return this.request('GET', `/api/transactions/${reference}`, undefined, true);
+   }
 
   // ===== Health =====
   async healthCheck(): Promise<any> {

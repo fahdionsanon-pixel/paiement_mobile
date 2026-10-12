@@ -1,8 +1,9 @@
 import { Component, OnInit } from '@angular/core';
 import { Router } from '@angular/router';
 import { ToastController } from '@ionic/angular';
-import { Auth } from '../services/auth';
+import { AuthService } from '../services/auth-new.service';
 import { DatabaseService } from '../services/database.service';
+import { ApiClientService } from '../services/api-client.service';
 import * as QRCode from 'qrcode';
 import jsQR from 'jsqr';
 
@@ -141,11 +142,15 @@ export class HomePage implements OnInit {
   ];
 
   // PIN Security
-  userPin = '';
   isPinSetup = false;
   pinInput = '';
   pinConfirm = '';
   pinError = '';
+
+  // Send Money PIN
+  sendPin = '';
+  isSending = false;
+  private sendKey = crypto.randomUUID();
 
   // Quick contacts — vide pour un nouveau compte
   quickContacts: QuickContact[] = [];
@@ -192,10 +197,11 @@ export class HomePage implements OnInit {
   isDbSettingsModalOpen = false;
 
   constructor(
-    private auth: Auth,
+    private auth: AuthService,
     private router: Router,
     private toastCtrl: ToastController,
-    public dbService: DatabaseService
+    public dbService: DatabaseService,
+    private api: ApiClientService
   ) {}
 
   async ngOnInit() {
@@ -638,49 +644,39 @@ export class HomePage implements OnInit {
 
   // Execute Send Money
   async confirmSendMoney() {
-    if (!this.sendForm.amount || this.sendForm.amount <= 0) {
+    if (this.isSending) return;
+    const amountVal = Number(this.sendForm.amount);
+    if (!Number.isInteger(amountVal) || amountVal <= 0) {
       this.showToast('Veuillez saisir un montant valide.', 'danger');
       return;
     }
-
     if (!this.sendForm.recipientPhone) {
       this.showToast('Veuillez saisir le numéro du destinataire.', 'danger');
       return;
     }
-
-    const recipient = this.sendForm.recipientName || this.sendForm.recipientPhone;
-    const amountVal = Number(this.sendForm.amount);
-    const noteVal = this.sendForm.note || 'Transfert instantané PayPulse';
-
-    // Exécution avec sauvegarde locale sur l'appareil + Synchronisation WAMP MySQL
-    const result = await this.dbService.executeSendMoney(
-      recipient,
-      this.sendForm.recipientPhone,
-      amountVal,
-      noteVal
-    );
-
-    this.balanceXOF = result.newBalance;
-    this.monthlyExpense += amountVal;
-    this.transactions.unshift(result.localTx);
-    this.isSendModalOpen = false;
-
-    // Reset form
-    this.sendForm = {
-      recipientName: '',
-      recipientPhone: '',
-      amount: null,
-      note: '',
-      category: 'transfer',
-    };
-
-    const statusMsg = result.synced
-      ? `✅ Transfert de ${this.formatAmount(amountVal)} synchronisé avec WAMP MySQL !`
-      : result.newBalance >= 0
-        ? `📱 Transfert de ${this.formatAmount(amountVal)} enregistré sur l'appareil (mode local) !`
-        : `⚠️ Transfert de ${this.formatAmount(amountVal)} validé (solde négatif) !`;
-
-    await this.showToast(statusMsg, result.synced ? 'success' : result.newBalance >= 0 ? 'warning' : 'warning');
+    if (this.sendPin.length !== 4) {
+      this.showToast('Entrez votre PIN à 4 chiffres.', 'danger');
+      return;
+    }
+    this.isSending = true;
+    try {
+      const res = await this.api.sendMoney(
+        this.sendForm.recipientPhone, amountVal, this.sendPin, this.sendKey
+      );
+      this.balanceXOF = res.transaction.sender_new_balance; // le solde vient du serveur
+      this.monthlyExpense += amountVal;
+      this.isSendModalOpen = false;
+      this.sendForm = { recipientName: '', recipientPhone: '', amount: null, note: '', category: 'transfer' };
+      this.sendKey = crypto.randomUUID();
+      await this.showToast(`✅ ${this.formatAmount(amountVal)} envoyés`, 'success');
+      // puis rechargez l'historique avec this.api.getTransactions(...)
+    } catch (e: any) {
+      const msg = e?.error?.message || 'Envoi impossible. Vérifiez votre connexion.';
+      await this.showToast(msg, 'danger');
+    } finally {
+      this.isSending = false;
+      this.sendPin = '';
+    }
   }
 
   // Execute Top Up
@@ -816,13 +812,7 @@ export class HomePage implements OnInit {
 
   // ===== PIN SECURITY =====
   loadPinStatus() {
-    try {
-      const savedPin = localStorage.getItem('paypulse_pin');
-      if (savedPin) {
-        this.userPin = savedPin;
-        this.isPinSetup = true;
-      }
-    } catch (e) {}
+    this.isPinSetup = this.auth.hasPin();
   }
 
   openPinSetup() {
@@ -832,8 +822,8 @@ export class HomePage implements OnInit {
     this.isPinModalOpen = true;
   }
 
-  confirmPinSetup() {
-    if (this.pinInput.length !== 4 || !/^\d{4}$/.test(this.pinInput)) {
+  async confirmPinSetup() {
+    if (!/^\d{4}$/.test(this.pinInput)) {
       this.pinError = 'Le PIN doit être à 4 chiffres.';
       return;
     }
@@ -841,19 +831,16 @@ export class HomePage implements OnInit {
       this.pinError = 'Les codes ne correspondent pas.';
       return;
     }
-    try {
-      localStorage.setItem('paypulse_pin', this.pinInput);
-      this.userPin = this.pinInput;
-      this.isPinSetup = true;
-      this.isPinModalOpen = false;
-      this.showToast('PIN enregistré avec succès !', 'success');
-    } catch (e) {
-      this.pinError = 'Impossible d\'enregistrer le PIN.';
+    const res = await this.auth.setPin(this.pinInput);
+    if (!res.success) {
+      this.pinError = res.message;
+      return;
     }
-  }
-
-  verifyPin(pin: string): boolean {
-    return pin === this.userPin;
+    this.pinInput = '';
+    this.pinConfirm = '';
+    this.isPinSetup = true;
+    this.isPinModalOpen = false;
+    this.showToast('PIN enregistré avec succès !', 'success');
   }
 
   // Logout

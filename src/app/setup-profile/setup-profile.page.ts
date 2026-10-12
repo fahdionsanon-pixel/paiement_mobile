@@ -1,8 +1,7 @@
 import { Component, OnInit } from '@angular/core';
 import { Router } from '@angular/router';
 import { ToastController, LoadingController } from '@ionic/angular';
-import { Auth } from '../services/auth';
-import { DatabaseService } from '../services/database.service';
+import { AuthService } from '../services/auth-new.service';
 
 @Component({
   selector: 'app-setup-profile',
@@ -17,11 +16,10 @@ export class SetupProfilePage implements OnInit {
   loading = false;
 
   constructor(
-    private auth: Auth,
+    private auth: AuthService,
     private router: Router,
     private toastCtrl: ToastController,
-    private loadingCtrl: LoadingController,
-    private db: DatabaseService
+    private loadingCtrl: LoadingController
   ) {}
 
   ngOnInit() {
@@ -50,7 +48,8 @@ export class SetupProfilePage implements OnInit {
     await loader.present();
 
     try {
-      await this.db.saveUserProfile(this.phone, this.fullName);
+      const res = await this.auth.updateProfile(this.fullName);
+      if (!res.success) throw new Error(res.message);
       await loader.dismiss();
       this.loading = false;
       this.router.navigate(['/home'], { replaceUrl: true });
