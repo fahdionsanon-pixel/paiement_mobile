@@ -1,4 +1,4 @@
-// API Client Service - Connects Ionic app to Node.js backend
+// API Client Service - Connects Ionic app to PHP/WAMP backend
 // Base URL configurable, handles auth tokens
 
 import { Injectable } from '@angular/core';
@@ -11,7 +11,7 @@ export interface ApiConfig {
 }
 
 const DEFAULT_CONFIG: ApiConfig = {
-  baseUrl: 'http://localhost:3000',
+  baseUrl: 'http://localhost',
   timeout: 30000,
 };
 
@@ -112,57 +112,63 @@ export class ApiClientService {
     throw new Error('Méthode non supportée');
   }
 
-   // ===== OTP =====
-   async sendOtp(phone: string): Promise<any> {
-     return this.request('POST', '/api/otp/send', { phone }, false);
-   }
+  // ===== OTP =====
+  async sendOtp(phone: string): Promise<any> {
+    return this.request('POST', '/send_sms.php', { phone }, false);
+  }
 
-   async verifyOtp(phone: string, code: string): Promise<any> {
-     return this.request('POST', '/api/otp/verify', { phone, code, deviceName: 'Appareil Ionic' }, false);
-   }
+  async verifyOtp(phone: string, code: string): Promise<any> {
+    return this.request('POST', '/verify_sms.php', { phone, code }, false);
+  }
 
-   // ===== PIN =====
-   async setPin(pin: string): Promise<any> {
-     return this.request('POST', '/api/pin/set', { pin }, true);
-   }
+  // ===== Session (simulated for PHP backend) =====
+  async validateSession(): Promise<any> {
+    // For PHP backend, session is local - just check if we have a token
+    return { success: !!this.currentToken };
+  }
 
-   // ===== Session =====
-   async validateSession(): Promise<any> {
-     return this.request('GET', '/api/session/validate', undefined, true);
-   }
+  async revokeSession(): Promise<any> {
+    this.clearToken();
+    return { success: true };
+  }
 
-   async revokeSession(): Promise<any> {
-     return this.request('POST', '/api/session/revoke', undefined, true);
-   }
+  // ===== User Data =====
+  async getUserData(phone: string): Promise<any> {
+    return this.request('GET', '/get_data.php', { phone }, false);
+  }
 
-   // ===== Auth =====
-   async login(phone: string): Promise<any> {
-     return this.request('POST', '/api/auth/login', { phone }, false);
-   }
+  // ===== Transfer =====
+  async sendMoney(phone: string, recipientPhone: string, amount: number, note?: string, category?: string): Promise<any> {
+    return this.request('POST', '/send_money.php', {
+      phone,
+      recipientPhone,
+      amount,
+      note: note || 'Transfert instantané PayPulse',
+      category: category || 'transfer',
+    }, true);
+  }
 
-   // ===== Profile =====
-   async updateProfile(name: string): Promise<any> {
-     return this.request('POST', '/api/profile', { name }, true);
-   }
+  // ===== Top Up =====
+  async topUp(phone: string, amount: number, method: string = 'card'): Promise<any> {
+    return this.request('POST', '/top_up.php', {
+      phone,
+      amount,
+      method,
+    }, true);
+  }
 
-   // ===== Transfer =====
-   async sendMoney(recipientPhone: string, amount: number, pin: string, idempotencyKey: string): Promise<any> {
-     return this.request('POST', '/api/transfer/send', {
-       recipientPhone,
-       amount,
-       pin,
-       idempotency_key: idempotencyKey,
-     }, true);
-   }
+  // ===== Profile =====
+  async updateProfile(phone: string, name: string): Promise<any> {
+    return this.request('POST', '/update_profile.php', { phone, name }, true);
+  }
 
-   // ===== Transactions =====
-   async getTransactions(): Promise<any> {
-     return this.request('GET', '/api/transactions/list', undefined, true);
-   }
-
-   async getTransaction(reference: string): Promise<any> {
-     return this.request('GET', `/api/transactions/${reference}`, undefined, true);
-   }
+  // ===== Sync =====
+  async syncData(phone: string, pendingTransactions: any[] = []): Promise<any> {
+    return this.request('POST', '/sync.php', {
+      phone,
+      pending_transactions: pendingTransactions,
+    }, true);
+  }
 
   // ===== Health =====
   async healthCheck(): Promise<any> {

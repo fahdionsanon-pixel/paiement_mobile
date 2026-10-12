@@ -147,10 +147,9 @@ export class HomePage implements OnInit {
   pinConfirm = '';
   pinError = '';
 
-  // Send Money PIN
+  // Send Money
   sendPin = '';
   isSending = false;
-  private sendKey = crypto.randomUUID();
 
   // Quick contacts — vide pour un nouveau compte
   quickContacts: QuickContact[] = [];
@@ -658,18 +657,22 @@ export class HomePage implements OnInit {
       this.showToast('Entrez votre PIN à 4 chiffres.', 'danger');
       return;
     }
+    // Verify PIN locally
+    if (!this.auth.verifyPin(this.sendPin)) {
+      this.showToast('PIN incorrect.', 'danger');
+      return;
+    }
     this.isSending = true;
     try {
       const res = await this.api.sendMoney(
-        this.sendForm.recipientPhone, amountVal, this.sendPin, this.sendKey
+        this.auth.getPhone(), this.sendForm.recipientPhone, amountVal, this.sendForm.note, this.sendForm.category
       );
-      this.balanceXOF = res.transaction.sender_new_balance; // le solde vient du serveur
+      this.balanceXOF = res.newBalance;
       this.monthlyExpense += amountVal;
       this.isSendModalOpen = false;
       this.sendForm = { recipientName: '', recipientPhone: '', amount: null, note: '', category: 'transfer' };
-      this.sendKey = crypto.randomUUID();
+      this.sendPin = '';
       await this.showToast(`✅ ${this.formatAmount(amountVal)} envoyés`, 'success');
-      // puis rechargez l'historique avec this.api.getTransactions(...)
     } catch (e: any) {
       const msg = e?.error?.message || 'Envoi impossible. Vérifiez votre connexion.';
       await this.showToast(msg, 'danger');
@@ -687,17 +690,17 @@ export class HomePage implements OnInit {
       return;
     }
 
-    // Exécution avec sauvegarde locale sur l'appareil + Synchronisation WAMP MySQL
-    const result = await this.dbService.executeTopUp(amount, this.topUpMethod);
-
-    this.balanceXOF = result.newBalance;
-    this.monthlyIncome += amount;
-    this.transactions.unshift(result.localTx);
-    this.isTopUpModalOpen = false;
-
-    const statusMsg = result.synced
-      ? `✅ Recharge de ${this.formatAmount(amount)} synchronisée avec WAMP MySQL !`
-      : `📱 Recharge de ${this.formatAmount(amount)} enregistrée sur l'appareil (mode local) !`;
+    try {
+      const res = await this.api.topUp(this.auth.getPhone(), amount, this.topUpMethod);
+      this.balanceXOF = res.newBalance;
+      this.monthlyIncome += amount;
+      this.isTopUpModalOpen = false;
+      await this.showToast(`✅ Recharge de ${this.formatAmount(amount)} effectuée`, 'success');
+    } catch (e: any) {
+      const msg = e?.error?.message || 'Recharge impossible.';
+      await this.showToast(msg, 'danger');
+    }
+  }
 
     await this.showToast(statusMsg, 'success');
   }
