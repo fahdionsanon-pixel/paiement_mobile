@@ -45,7 +45,7 @@ export class LoginPage implements OnInit {
 
   isValid(): boolean {
     const digits = (this.phone || '').replace(/\s/g, '');
-    return /^\d{6,15}$/.test(digits);
+    return /^\d{8,15}$/.test(digits);
   }
 
   async confirm() {
