@@ -18,7 +18,7 @@ if (empty($name)) {
 }
 
 try {
-    // Normalize phone for comparison
+    // Normalize phone for comparison AND storage
     $cleanPhone = preg_replace('/[^0-9]/', '', $phone);
 
     // Calculate initials
@@ -32,25 +32,18 @@ try {
     $initials = mb_substr($initials, 0, 3);
 
     // Vérifier si l'utilisateur existe déjà par numéro de téléphone (normalized comparison)
-    $stmt = $pdo->prepare('SELECT id, phone FROM users WHERE id > 0');
-    $allUsers = $stmt->fetchAll();
-    
-    $userId = null;
-    foreach ($allUsers as $u) {
-        $storedClean = preg_replace('/[^0-9]/', '', $u['phone'] ?? '');
-        if ($storedClean === $cleanPhone && !empty($storedClean)) {
-            $userId = (int)$u['id'];
-            break;
-        }
-    }
+    $stmt = $pdo->prepare('SELECT id, phone FROM users WHERE REPLACE(REPLACE(REPLACE(REPLACE(phone, "+", ""), " ", ""), "-", ""), "(", "") = ? LIMIT 1');
+    $stmt->execute([$cleanPhone]);
+    $user = $stmt->fetch();
 
-    if ($userId) {
-        $upd = $pdo->prepare('UPDATE users SET name = ?, initials = ?, verified = 1 WHERE id = ?');
-        $upd->execute([$name, $initials, $userId]);
+    if ($user) {
+        $userId = (int)$user['id'];
+        $upd = $pdo->prepare('UPDATE users SET name = ?, initials = ?, verified = 1, phone = ? WHERE id = ?');
+        $upd->execute([$name, $initials, $cleanPhone, $userId]);
     } else {
-        // Créer un nouvel utilisateur avec ce numéro (ne pas réutiliser un autre compte)
+        // Créer un nouvel utilisateur avec le numéro nettoyé
         $ins = $pdo->prepare('INSERT INTO users (name, phone, initials, balance, verified) VALUES (?, ?, ?, 0.00, 1)');
-        $ins->execute([$name, $phone, $initials]);
+        $ins->execute([$name, $cleanPhone, $initials]);
         $userId = (int)$pdo->lastInsertId();
     }
 
@@ -60,7 +53,7 @@ try {
         'user' => [
             'id' => $userId,
             'name' => $name,
-            'phone' => $phone,
+            'phone' => $cleanPhone,
             'initials' => $initials,
             'verified' => true
         ]

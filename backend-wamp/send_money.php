@@ -6,22 +6,25 @@ if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
 }
 
 $input = getJsonInput();
-  $userId = isset($input['user_id']) ? (int)$input['user_id'] : 1;
-  $phone = $input['phone'] ?? '';
-  $amount = isset($input['amount']) ? (float)$input['amount'] : 0;
-  $recipient = trim($input['recipient_name'] ?? ($input['recipient_phone'] ?? 'Destinataire'));
-  $note = trim($input['note'] ?? 'Transfert instantané PayPulse');
-  $category = trim($input['category'] ?? 'transfer');
+$userId = isset($input['user_id']) ? (int)$input['user_id'] : 1;
+$phone = $input['phone'] ?? '';
+$amount = isset($input['amount']) ? (float)$input['amount'] : 0;
+$recipient = trim($input['recipient_name'] ?? ($input['recipient_phone'] ?? 'Destinataire'));
+$note = trim($input['note'] ?? 'Transfert instantané PayPulse');
+$category = trim($input['category'] ?? 'transfer');
 
-  // Find the correct user ID from the phone number
-  if (!empty($phone)) {
-      $stmtFindUser = $pdo->prepare('SELECT id FROM users WHERE phone = ? LIMIT 1');
-      $stmtFindUser->execute([$phone]);
-      $foundUser = $stmtFindUser->fetch();
-      if ($foundUser) {
-          $userId = (int)$foundUser['id'];
-      }
-  }
+// Normalize phone for database lookup
+$cleanPhone = preg_replace('/[^0-9]/', '', $phone);
+
+// Find the correct user ID from the phone number
+if (!empty($cleanPhone)) {
+    $stmtFindUser = $pdo->prepare('SELECT id FROM users WHERE REPLACE(REPLACE(REPLACE(REPLACE(phone, "+", ""), " ", ""), "-", ""), "(", "") = ? LIMIT 1');
+    $stmtFindUser->execute([$cleanPhone]);
+    $foundUser = $stmtFindUser->fetch();
+    if ($foundUser) {
+        $userId = (int)$foundUser['id'];
+    }
+}
 
 if ($amount <= 0) {
     jsonResponse(['success' => false, 'message' => 'Montant invalide'], 400);

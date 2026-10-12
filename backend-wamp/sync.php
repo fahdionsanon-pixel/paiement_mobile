@@ -2,19 +2,22 @@
 require_once __DIR__ . '/config.php';
 
 $input = getJsonInput();
-  $userId = isset($input['user_id']) ? (int)$input['user_id'] : 1;
-  $pendingTransactions = $input['pending_transactions'] ?? [];
-  $phone = $input['phone'] ?? '';
+$userId = isset($input['user_id']) ? (int)$input['user_id'] : 1;
+$pendingTransactions = $input['pending_transactions'] ?? [];
+$phone = $input['phone'] ?? '';
 
-  // Find the correct user ID from the phone number
-  if (!empty($phone)) {
-      $stmtFindUser = $pdo->prepare('SELECT id FROM users WHERE phone = ? LIMIT 1');
-      $stmtFindUser->execute([$phone]);
-      $foundUser = $stmtFindUser->fetch();
-      if ($foundUser) {
-          $userId = (int)$foundUser['id'];
-      }
-  }
+// Normalize phone for database lookup
+$cleanPhone = preg_replace('/[^0-9]/', '', $phone);
+
+// Find the correct user ID from the phone number
+if (!empty($cleanPhone)) {
+    $stmtFindUser = $pdo->prepare('SELECT id FROM users WHERE REPLACE(REPLACE(REPLACE(REPLACE(phone, "+", ""), " ", ""), "-", ""), "(", "") = ? LIMIT 1');
+    $stmtFindUser->execute([$cleanPhone]);
+    $foundUser = $stmtFindUser->fetch();
+    if ($foundUser) {
+        $userId = (int)$foundUser['id'];
+    }
+}
 
 try {
     $pdo->beginTransaction();
