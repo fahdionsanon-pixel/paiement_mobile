@@ -2,7 +2,6 @@ import { Component, OnInit } from '@angular/core';
 import { Router } from '@angular/router';
 import { ToastController } from '@ionic/angular';
 import { AuthService } from '../services/auth-new.service';
-import { DatabaseService } from '../services/database.service';
 import { ApiClientService } from '../services/api-client.service';
 import * as QRCode from 'qrcode';
 import jsQR from 'jsqr';
@@ -58,7 +57,7 @@ export class HomePage implements OnInit {
   };
 
   // State
-  showBalance = true;
+  showBalance = false;
   activeNavTab = 'home';
   transactionFilter: 'all' | 'debit' | 'credit' = 'all';
   searchQuery = '';
@@ -195,114 +194,121 @@ export class HomePage implements OnInit {
   wampApiUrl = 'http://127.0.0.1:8080';
   isDbSettingsModalOpen = false;
 
+  // Idempotency key for transfers
+  private sendKey = this.newKey();
+
   constructor(
     private auth: AuthService,
     private router: Router,
     private toastCtrl: ToastController,
-    public dbService: DatabaseService,
     private api: ApiClientService
   ) {}
 
+  private newKey(): string {
+    return typeof crypto !== 'undefined' && crypto.randomUUID
+      ? crypto.randomUUID()
+      : `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+  }
+
   async ngOnInit() {
-    // Récupérer le numéro de téléphone depuis l'auth
-    const authPhone = this.auth.getPhone();
-
-    // Charger les données locales SEULEMENT si elles appartiennent à ce compte
-    this.loadFromLocalDevice(authPhone);
-
-    // Charger le statut PIN
+    const name = this.auth.getCurrentUser()?.name || '';
+    this.user = {
+      name,
+      phone: this.auth.getPhone(),
+      initials: this.getInitials(name),
+      verified: true,
+      cashbackBalance: 0,
+    };
     this.loadPinStatus();
-
-    // Générer le QR Code dynamique du compte
     await this.generateMyQrCode();
+    await this.refreshData();
+  }
 
-    this.wampApiUrl = this.dbService.apiUrl;
+  // Actualise le solde et l'historique à chaque affichage de la page
+  async ionViewWillEnter() {
+    await this.refreshData();
+    // Démarrer le rafraîchissement automatique toutes les 10 secondes
+    this.startAutoRefresh();
+  }
 
-    this.dbService.isWampConnected$.subscribe((connected) => {
-      this.isWampConnected = connected;
-    });
+  async ionViewWillLeave() {
+    // Arrêter le rafraîchissement automatique quand on quitte la page
+    this.stopAutoRefresh();
+  }
 
-    this.dbService.isSyncing$.subscribe((syncing) => {
-      this.isSyncing = syncing;
-    });
+  // Rafraîchissement automatique toutes les 10 secondes
+  private autoRefreshInterval: any = null;
 
-    // Sync with the authenticated phone number (not from local data which may be empty)
-    await this.syncDatabase(false, authPhone);
+  private startAutoRefresh() {
+    if (this.autoRefreshInterval) return; // déjà démarré
+    this.autoRefreshInterval = setInterval(() => {
+      this.refreshData(false); // sans toast
+    }, 5000); // 5 secondes
+  }
+
+  private stopAutoRefresh() {
+    if (this.autoRefreshInterval) {
+      clearInterval(this.autoRefreshInterval);
+      this.autoRefreshInterval = null;
+    }
+  }
+
+  // Pull-to-refresh handler
+  async doRefresh(event: any) {
+    await this.refreshData(true);
+    event.target.complete();
+  }
+
+  private getInitials(name: string): string {
+    return name
+      .split(' ')
+      .filter(Boolean)
+      .slice(0, 2)
+      .map(part => part[0].toUpperCase())
+      .join('');
+  }
+
+  // Le solde et l'historique viennent toujours du serveur
+  async refreshData(showFeedback = false) {
+    try {
+      const res: any = await this.api.getTransactions();
+      this.balanceXOF = res.balance;
+      this.transactions = res.transactions.map((t: any) => this.mapTransaction(t));
+      if (showFeedback) {
+        this.showToast('Données à jour', 'success');
+      }
+    } catch (e: any) {
+      this.showToast(e?.error?.message || 'Impossible de charger vos données.', 'danger');
+    }
+  }
+
+  // Transforme une transaction du serveur en ligne d'historique de l'écran
+  private mapTransaction(t: any): Transaction {
+    const sent = !!t.is_sender;
+    const other = (sent ? t.to_phone : t.from_phone) || '';
+    const raw = String(t.created_at);
+    const d = new Date(raw.includes('T') ? raw : raw.replace(' ', 'T') + 'Z');
+    return {
+      id: t.reference,
+      title: sent ? `Envoi à ${other}` : `Reçu de ${other}`,
+      subtitle: other,
+      category: 'transfer',
+      categoryLabel: 'Transfert',
+      icon: sent ? 'paper-plane' : 'arrow-down',
+      iconBg: sent ? 'rgba(99, 102, 241, 0.15)' : 'rgba(16, 185, 129, 0.15)',
+      iconColor: sent ? '#6366f1' : '#10b981',
+      amount: t.amount,
+      type: sent ? 'debit' : 'credit',
+      date: d.toLocaleDateString('fr-FR'),
+      time: d.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' }),
+      status: t.status,
+      reference: t.reference,
+      fees: 0,
+    };
   }
 
   openProfile() {
     this.showToast(`Connecté : ${this.user.phone || 'Numéro inconnu'}`, 'primary');
-  }
-
-  loadFromLocalDevice(authPhone?: string) {
-    const local = this.dbService.getLocalData();
-
-    // Normalize phone numbers for comparison (remove +, spaces, dashes)
-    const normalizePhone = (p: string) => (p || '').replace(/[\s+\-\(\).]/g, '');
-    const storedPhone = normalizePhone(local.user?.phone || '');
-    const authPhoneNorm = normalizePhone(authPhone || '');
-
-    // Vérification cruciale : les données stockées appartiennent-elles à ce compte ?
-    const isSameUser = !storedPhone || !authPhoneNorm || storedPhone === authPhoneNorm;
-
-    if (!isSameUser) {
-      // Autre utilisateur détecté sur cet appareil → réinitialiser proprement
-      console.log(`Compte différent détecté (${storedPhone} ≠ ${authPhoneNorm}). Réinitialisation des données locales.`);
-      this.dbService.resetLocalDatabase();
-      // Repartir sur des données vides pour ce nouvel utilisateur
-      this.user = { name: '', phone: authPhone || '', initials: '', verified: false, cashbackBalance: 0 };
-      this.balanceXOF = 0;
-      this.transactions = [];
-      this.quickContacts = [];
-      this.savingsGoal = { title: '', current: 0, target: 0, percent: 0 };
-      this.lastSyncTime = 'Mode local';
-      return;
-    }
-
-    // Même utilisateur → charger ses données normalement
-    this.user = { ...local.user };
-    if (authPhone) {
-      this.user.phone = authPhone;
-    }
-    this.balanceXOF = local.balanceXOF;
-    this.transactions = local.transactions;
-    this.quickContacts = local.contacts;
-    this.savingsGoal = local.savingsGoal;
-    this.lastSyncTime = local.syncedAt || 'Mode local';
-  }
-
-  async syncDatabase(showFeedback = false, authPhone?: string) {
-    const phoneToUse = authPhone || this.auth.getPhone();
-    const res = await this.dbService.syncWithWamp(phoneToUse);
-    if (res.success && res.data) {
-      // Only update balance and transactions from WAMP
-      // Preserve the current user's phone and name (don't overwrite with WAMP user_id=1 data)
-      this.balanceXOF = res.data.balanceXOF;
-      this.transactions = res.data.transactions;
-      this.lastSyncTime = res.data.syncedAt || '';
-      
-      // Conserver le nom du profil local (ne pas écraser avec les données WAMP)
-      const savedProfile = this.dbService.getLocalData();
-      if (savedProfile.user && savedProfile.user.name) {
-        this.user.name = savedProfile.user.name;
-        this.user.initials = savedProfile.user.initials;
-      }
-      // Always use the authenticated phone, not WAMP data
-      if (phoneToUse) {
-        this.user.phone = phoneToUse;
-      }
-      if (showFeedback) {
-        this.showToast('✅ Données synchronisées avec la base WAMP MySQL !', 'success');
-      }
-    } else if (showFeedback) {
-      this.showToast(res.message || 'Mode local actif (Wamp non connecté)', 'warning');
-    }
-  }
-
-  updateWampUrl() {
-    this.dbService.setWampApiUrl(this.wampApiUrl);
-    this.syncDatabase(true, this.auth.getPhone());
-    this.isDbSettingsModalOpen = false;
   }
 
   // Formatting helpers
@@ -599,33 +605,6 @@ export class HomePage implements OnInit {
     this.onQrCodeScanned(phoneToTest);
   }
 
-  async confirmScannedDeposit() {
-    if (!this.scannedDepositAmount || this.scannedDepositAmount <= 0) {
-      this.showToast('Veuillez entrer un montant valide.', 'danger');
-      return;
-    }
-
-    const amount = Number(this.scannedDepositAmount);
-    const recipient = this.scannedRecipientPhone;
-    const note = this.scannedDepositNote || 'Dépôt direct par Scan QR';
-
-    const result = await this.dbService.executeQrDeposit(recipient, amount, note);
-
-    if (result.success) {
-      this.balanceXOF = result.newBalance;
-      this.transactions.unshift(result.localTx);
-      this.isScannedDepositModalOpen = false;
-
-      const msg = result.synced
-        ? `✅ Dépôt de ${this.formatAmount(amount)} effectué avec succès sur le compte ${recipient} (WAMP MySQL) !`
-        : `📱 Dépôt de ${this.formatAmount(amount)} enregistré sur l'appareil pour le compte ${recipient} !`;
-
-      await this.showToast(msg, 'success');
-    } else {
-      this.showToast('Erreur lors du dépôt sur le compte scanné.', 'danger');
-    }
-  }
-
   // Contact quick tap
   selectContact(contact: QuickContact) {
     this.sendForm.recipientPhone = contact.phone;
@@ -653,26 +632,27 @@ export class HomePage implements OnInit {
       this.showToast('Veuillez saisir le numéro du destinataire.', 'danger');
       return;
     }
+    // Validate recipient phone: exactly 8 digits after removing +, spaces, country code
+    const recipientDigits = this.sendForm.recipientPhone.replace(/[^0-9]/g, '');
+    if (!/^\d{8}$/.test(recipientDigits)) {
+      this.showToast('Le numéro destinataire doit contenir exactement 8 chiffres.', 'danger');
+      return;
+    }
     if (this.sendPin.length !== 4) {
       this.showToast('Entrez votre PIN à 4 chiffres.', 'danger');
       return;
     }
-    // Verify PIN locally
-    if (!this.auth.verifyPin(this.sendPin)) {
-      this.showToast('PIN incorrect.', 'danger');
-      return;
-    }
     this.isSending = true;
     try {
-      const res = await this.api.sendMoney(
-        this.auth.getPhone(), this.sendForm.recipientPhone, amountVal, this.sendForm.note, this.sendForm.category
+      const res: any = await this.api.sendMoney(
+        this.sendForm.recipientPhone, amountVal, this.sendPin, this.sendKey
       );
-      this.balanceXOF = res.newBalance;
-      this.monthlyExpense += amountVal;
+      this.balanceXOF = res.transaction.sender_new_balance; // le solde vient du serveur
       this.isSendModalOpen = false;
       this.sendForm = { recipientName: '', recipientPhone: '', amount: null, note: '', category: 'transfer' };
-      this.sendPin = '';
+      this.sendKey = this.newKey();
       await this.showToast(`✅ ${this.formatAmount(amountVal)} envoyés`, 'success');
+      await this.refreshData();
     } catch (e: any) {
       const msg = e?.error?.message || 'Envoi impossible. Vérifiez votre connexion.';
       await this.showToast(msg, 'danger');
@@ -682,24 +662,19 @@ export class HomePage implements OnInit {
     }
   }
 
-  // Execute Top Up
-  async confirmTopUp() {
-    const amount = Number(this.topUpAmount);
-    if (!amount || amount <= 0) {
-      this.showToast('Veuillez entrer un montant valide.', 'danger');
-      return;
-    }
+  // Pas encore disponible : seul le serveur peut modifier un solde
+  private featureUnavailable(label: string) {
+    this.showToast(`${label} n'est pas encore disponible dans cette version.`, 'warning');
+  }
 
-    try {
-      const res = await this.api.topUp(this.auth.getPhone(), amount, this.topUpMethod);
-      this.balanceXOF = res.newBalance;
-      this.monthlyIncome += amount;
-      this.isTopUpModalOpen = false;
-      await this.showToast(`✅ Recharge de ${this.formatAmount(amount)} effectuée`, 'success');
-    } catch (e: any) {
-      const msg = e?.error?.message || 'Recharge impossible.';
-      await this.showToast(msg, 'danger');
-    }
+  async confirmTopUp() {
+    this.isTopUpModalOpen = false;
+    this.featureUnavailable('La recharge');
+  }
+
+  async confirmScannedDeposit() {
+    this.isScannedDepositModalOpen = false;
+    this.featureUnavailable('Le dépôt par QR code');
   }
 
   // Pay a bill
@@ -746,68 +721,8 @@ export class HomePage implements OnInit {
   }
 
   async confirmWithdrawal() {
-    if (!this.withdrawalForm.amount || this.withdrawalForm.amount <= 0) {
-      this.showToast('Veuillez saisir un montant valide.', 'danger');
-      return;
-    }
-    if (!this.withdrawalForm.recipientPhone) {
-      this.showToast('Veuillez saisir le numéro de destination.', 'danger');
-      return;
-    }
-    if (this.withdrawalForm.amount > this.balanceXOF) {
-      this.showToast('Solde insuffisant pour ce retrait.', 'danger');
-      return;
-    }
-
-    // Request PIN authorization
-    if (!this.isPinSetup) {
-      this.isWithdrawModalOpen = false;
-      this.openPinSetup();
-      return;
-    }
-
     this.isWithdrawModalOpen = false;
-
-    const amountVal = Number(this.withdrawalForm.amount);
-    const methodLabel = this.withdrawalMethods.find(m => m.id === this.withdrawalForm.method)?.name || 'Retrait';
-
-    // Deduct balance
-    this.balanceXOF -= amountVal;
-    this.monthlyExpense += amountVal;
-
-    const txRef = 'WD-' + Date.now().toString(36) + '-' + Math.random().toString(36).substring(2, 8);
-    const dateLabel = 'À l’instant';
-    const timeLabel = new Date().toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' });
-
-    const newTx: Transaction = {
-      id: txRef,
-      title: `Retrait ${methodLabel}`,
-      subtitle: this.withdrawalForm.note || `Vers ${this.withdrawalForm.recipientPhone}`,
-      category: 'withdraw',
-      categoryLabel: 'Retrait',
-      icon: 'arrow-up',
-      iconBg: 'rgba(239, 68, 68, 0.15)',
-      iconColor: '#ef4444',
-      amount: amountVal,
-      type: 'debit',
-      date: dateLabel,
-      time: timeLabel,
-      status: 'completed',
-      reference: txRef,
-      fees: 0,
-    };
-
-    this.transactions.unshift(newTx);
-
-    // Reset form
-    this.withdrawalForm = {
-      method: 'mobile_money',
-      recipientPhone: '',
-      amount: null,
-      note: '',
-    };
-
-    await this.showToast(`✅ Retrait de ${this.formatAmount(amountVal)} effectué !`, 'success');
+    this.featureUnavailable('Le retrait');
   }
 
   // ===== PIN SECURITY =====

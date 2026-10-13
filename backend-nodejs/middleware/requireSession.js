@@ -15,6 +15,7 @@ export function requireSession(req, res, next) {
   for (const s of sessions) {
     if (verifyToken(token, s.token_hash)) {
       req.user = db.prepare('SELECT * FROM users WHERE id = ?').get(s.user_id);
+      req.tokenHash = s.token_hash; // expose for refresh endpoint
       return next();
     }
   }

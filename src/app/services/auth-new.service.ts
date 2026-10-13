@@ -27,15 +27,7 @@ export class AuthService {
     hasPin: false,
   });
 
-  constructor(private api: ApiClientService) {
-    // Restore local session
-    this.loadLocalSession();
-  }
-
-  // Normalize phone to digits only for consistent localStorage keys
-  private normalizePhone(phone: string): string {
-    return (phone || '').replace(/[^0-9]/g, '');
-  }
+  constructor(private api: ApiClientService) {}
 
   getPhone(): string {
     return this.currentUser?.phone || this.pendingPhone;
@@ -57,7 +49,7 @@ export class AuthService {
     return this.pinSet;
   }
 
-  // Step 1: Request a code
+  // Étape 1 : demander un code
   async sendOtp(phone: string): Promise<{ success: boolean; otp?: string; message: string }> {
     try {
       const res = await this.api.sendOtp(phone);
@@ -72,29 +64,16 @@ export class AuthService {
     }
   }
 
-  // Step 2: Verify the code
+  // Étape 2 : vérifier le code. Le serveur crée la session et renvoie le jeton.
   async verifyOtp(code: string): Promise<{ success: boolean; user: User | null; message: string; hasPin: boolean }> {
     try {
       const res = await this.api.verifyOtp(this.pendingPhone, code);
-      if (res.success) {
-        // Fetch user data from server
-        const userData = await this.api.getUserData(this.pendingPhone);
-        const normPhone = this.normalizePhone(this.pendingPhone);
-        if (userData.success && userData.user) {
-          this.currentUser = userData.user;
-          this.pinSet = !!localStorage.getItem(`paypulse_pin_${normPhone}`);
-          this.authenticated = true;
-          this.pendingOtp = '';
-          this.saveLocalSession();
-          this.updateState();
-          return { success: true, user: this.currentUser, message: res.message, hasPin: this.pinSet };
-        }
-        // Fallback if getUserData fails
-        this.currentUser = { id: 0, phone: this.pendingPhone, name: '' };
-        this.pinSet = !!localStorage.getItem(`paypulse_pin_${normPhone}`);
+      if (res.success && res.token) {
+        this.api.setToken(res.token);
+        this.currentUser = res.user;
+        this.pinSet = !!res.hasPin;
         this.authenticated = true;
         this.pendingOtp = '';
-        this.saveLocalSession();
         this.updateState();
         return { success: true, user: this.currentUser, message: res.message, hasPin: this.pinSet };
       }
@@ -104,18 +83,18 @@ export class AuthService {
     }
   }
 
-  // PIN is stored locally for PHP backend
+  // PIN est vérifié côté serveur
   async setPin(pin: string): Promise<{ success: boolean; message: string }> {
     try {
       if (!/^\d{4}$/.test(pin)) {
         return { success: false, message: 'Le PIN doit être à 4 chiffres' };
       }
-      const normPhone = this.normalizePhone(this.currentUser?.phone || this.pendingPhone);
-      localStorage.setItem(`paypulse_pin_${normPhone}`, pin);
-      this.pinSet = true;
-      this.saveLocalSession();
-      this.updateState();
-      return { success: true, message: 'PIN enregistré' };
+      const res = await this.api.setPin(pin);
+      if (res.success) {
+        this.pinSet = true;
+        this.updateState();
+      }
+      return { success: !!res.success, message: res.message || '' };
     } catch (err: any) {
       return { success: false, message: err?.error?.message || 'PIN non enregistré' };
     }
@@ -123,7 +102,7 @@ export class AuthService {
 
   async updateProfile(name: string): Promise<{ success: boolean; message: string }> {
     try {
-      const res = await this.api.updateProfile(this.pendingPhone, name);
+      const res = await this.api.updateProfile(name);
       if (res.success && this.currentUser) {
         this.currentUser = { ...this.currentUser, name };
         this.updateState();
@@ -134,59 +113,23 @@ export class AuthService {
     }
   }
 
-  // Verify PIN locally
-  verifyPin(pin: string): boolean {
-    const normPhone = this.normalizePhone(this.currentUser?.phone || this.pendingPhone);
-    const savedPin = localStorage.getItem(`paypulse_pin_${normPhone}`);
-    return pin === savedPin;
-  }
-
-  // At startup: check if we have a local session
+  // Au démarrage : vérifier si on a une session valide
   async validateSession(): Promise<boolean> {
-    if (!this.currentUser) return false;
+    if (!this.api.getToken()) return false;
     try {
-      // Optionally verify with server
-      const res = await this.api.getUserData(this.currentUser!.phone);
-      if (res.success && res.user) {
-        this.currentUser = res.user;
-        const normPhone = this.normalizePhone(this.currentUser!.phone);
-        this.pinSet = !!localStorage.getItem(`paypulse_pin_${normPhone}`);
-        this.authenticated = true;
-        this.updateState();
-        return true;
-      }
-    } catch (err) {}
-    this.clearLocal();
-    return false;
+      const res: any = await this.api.getTransactions();
+      // Si on arrive ici, le token est valide
+      // On pourrait aussi faire un appel dédié /api/session/validate
+      return true;
+    } catch (err) {
+      this.clearLocal();
+      return false;
+    }
   }
 
   logout(): void {
     this.api.revokeSession().catch(() => {});
     this.clearLocal();
-  }
-
-  private saveLocalSession(): void {
-    try {
-      localStorage.setItem('paypulse_auth', JSON.stringify({
-        user: this.currentUser,
-        authenticated: this.authenticated,
-        pinSet: this.pinSet,
-        phone: this.pendingPhone,
-      }));
-    } catch (e) {}
-  }
-
-  private loadLocalSession(): void {
-    try {
-      const saved = localStorage.getItem('paypulse_auth');
-      if (saved) {
-        const data = JSON.parse(saved);
-        this.currentUser = data.user;
-        this.authenticated = data.authenticated;
-        this.pinSet = data.pinSet;
-        this.pendingPhone = data.phone;
-      }
-    } catch (e) {}
   }
 
   private clearLocal(): void {
@@ -196,7 +139,6 @@ export class AuthService {
     this.pendingPhone = '';
     this.pendingOtp = '';
     this.api.clearToken();
-    localStorage.removeItem('paypulse_auth');
     this.updateState();
   }
 

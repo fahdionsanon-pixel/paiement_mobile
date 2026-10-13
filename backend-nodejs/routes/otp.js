@@ -88,17 +88,17 @@ router.post('/verify', (req, res) => {
      // Mark as used
      db.prepare('UPDATE otp_codes SET used_at = datetime(\'now\') WHERE id = ?').run(otpRecord.id);
 
-     // Find or create user
-     let user = db.prepare('SELECT * FROM users WHERE phone = ?').get(cleanPhone);
-     if (!user) {
-       // Create new user with empty name
-       const result = db.prepare('INSERT INTO users (phone, name) VALUES (?, ?)').run(cleanPhone, '');
-       user = db.prepare('SELECT * FROM users WHERE id = ?').get(result.lastInsertRowid);
-       
-       // Create account with 0 balance
-       db.prepare('INSERT INTO accounts (user_id, balance, currency) VALUES (?, ?, ?)')
-         .run(user.id, 0, 'XOF');
-     }
+     // Find or create user with transaction
+     const findOrCreateUser = db.transaction(() => {
+       let u = db.prepare('SELECT * FROM users WHERE phone = ?').get(cleanPhone);
+       if (!u) {
+         const result = db.prepare('INSERT INTO users (phone, name) VALUES (?, ?)').run(cleanPhone, '');
+         u = db.prepare('SELECT * FROM users WHERE id = ?').get(result.lastInsertRowid);
+         db.prepare('INSERT INTO accounts (user_id, balance, currency) VALUES (?, ?, ?)').run(u.id, 0, 'XOF');
+       }
+       return u;
+     });
+     const user = findOrCreateUser();
 
      // Revoke existing sessions and create new one
      db.prepare('UPDATE sessions SET revoked_at = datetime(\'now\') WHERE user_id = ? AND revoked_at IS NULL')
